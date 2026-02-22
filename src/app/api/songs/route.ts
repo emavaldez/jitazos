@@ -4,9 +4,10 @@ import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const category = searchParams.get("category");
+  // Puede venir una lista separada por coma: "rock_int,pop"
+  const categoriesParam = searchParams.get("category") || "rock_int";
+  const limit = parseInt(searchParams.get("limit") || "20", 10);
 
-  // Definimos las búsquedas (queries) según la categoría
   const queries: Record<string, string> = {
     rock_arg: "rock argentino classics",
     rock_int: "classic rock 80s 90s",
@@ -14,18 +15,32 @@ export async function GET(request: Request) {
     punk: "punk rock essentials",
   };
 
-  // Obtenemos la query correspondiente o una por defecto
-  const searchQuery = queries[category || "rock_int"];
+  const categories = categoriesParam.split(",").filter(Boolean);
 
   try {
-    // IMPORTANTE: Ahora pasamos la palabra clave, no un ID de playlist
-    const tracks = await getPlaylistTracks(searchQuery);
-    
-    if (!tracks || tracks.length === 0) {
+    // Fetch de cada género seleccionado en paralelo
+    const allTracksNested = await Promise.all(
+      categories.map((cat) => {
+        const q = queries[cat.trim()] || queries.rock_int;
+        return getPlaylistTracks(q, Math.ceil(limit / categories.length) + 5);
+      })
+    );
+
+    // Combinar, deduplicar por id y mezclar
+    const seen = new Set<string>();
+    const merged = allTracksNested.flat().filter((t) => {
+      if (seen.has(t.id)) return false;
+      seen.add(t.id);
+      return true;
+    });
+
+    const shuffled = merged.sort(() => Math.random() - 0.5).slice(0, limit + 5);
+
+    if (shuffled.length === 0) {
       return NextResponse.json({ error: "No se encontraron canciones" }, { status: 404 });
     }
 
-    return NextResponse.json(tracks);
+    return NextResponse.json(shuffled);
   } catch (error) {
     console.error("Error en la ruta API:", error);
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
