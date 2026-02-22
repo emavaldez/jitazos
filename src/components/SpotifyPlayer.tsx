@@ -3,43 +3,51 @@ import { useGameStore } from "@/store/useGameStore";
 import { useEffect, useState } from "react";
 
 export const SpotifyPlayer = () => {
-  const { activeSong, isPlaying } = useGameStore();
+  const { activeSong } = useGameStore();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  if (!mounted || !activeSong) return null;
+  if (!mounted || !activeSong || !activeSong.uri) return null;
 
-  const trackId = activeSong.uri?.includes(":")
+  const trackId = activeSong.uri.includes(":")
     ? activeSong.uri.split(":")[2]
     : activeSong.id;
 
-  // La key cambia cuando isPlaying se vuelve true → fuerza recarga del iframe
-  // con autoplay=1 justo después del click del usuario (gesto necesario para el browser)
-  const embedUrl = `https://open.spotify.com/embed/track/${trackId}?utm_source=generator${isPlaying ? "&autoplay=1" : ""}`;
+  // Sin autoplay — el user clickea el botón de play de Spotify directamente
+  const embedUrl = `https://open.spotify.com/embed/track/${trackId}?utm_source=generator`;
 
   return (
-    // Invisible pero presente en el DOM para que el autoplay funcione
+    /*
+      El embed compacto de Spotify es 300x80px.
+      El botón de play/pause está aprox. en x:10-50px, centrado verticalmente.
+      Con overflow:hidden + posición negativa del iframe mostramos solo esa zona.
+      El fondo negro hace que el resto del embed no se vea.
+    */
     <div
       style={{
-        position: "fixed",
-        left: "-9999px",
-        top: "-9999px",
-        width: "1px",
-        height: "1px",
-        opacity: 0,
-        pointerEvents: "none",
+        position: "relative",
+        width: "48px",
+        height: "48px",
         overflow: "hidden",
+        borderRadius: "50%",
+        backgroundColor: "black",
+        flexShrink: 0,
       }}
-      aria-hidden="true"
     >
       <iframe
-        key={`${trackId}-${isPlaying}`}
+        key={trackId}
         src={embedUrl}
-        width="300"
-        height="80"
+        style={{
+          position: "absolute",
+          width: "300px",
+          height: "80px",
+          left: "-10px",
+          top: "-16px",
+          border: "none",
+        }}
         allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
         allowFullScreen
       />

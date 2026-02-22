@@ -8,17 +8,19 @@ export interface Song {
   uri: string;
 }
 
+// ID especial para identificar la carta base (solo año, sin canción real)
+export const BASE_CARD_ID = '__base__';
+
 interface GameState {
   team1Timeline: Song[];
   team2Timeline: Song[];
-  playlist: Song[];           // ← FIX: faltaba esto en la interfaz
+  playlist: Song[];
   points: [number, number];
   currentTurn: 0 | 1;
   activeSong: Song | null;
   status: 'idle' | 'playing' | 'won';
   isPlaying: boolean;
- 
-  // Acciones
+
   setNextSong: (song: Song) => void;
   addPoint: (team: 0 | 1) => void;
   placeSong: (index: number) => boolean;
@@ -47,14 +49,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       const data = await response.json();
       const songsArray = Array.isArray(data) ? data : data.tracks?.items || [];
 
-      if (songsArray.length < 2) return;
+      if (songsArray.length < 1) return;
 
       const shuffled = [...songsArray].sort(() => Math.random() - 0.5);
-      const cartaBase = shuffled[0];
+
+      // Carta base: solo un año aleatorio entre 1960 y 2025, sin canción real
+      const randomYear = Math.floor(Math.random() * (2025 - 1960 + 1)) + 1960;
+      const cartaBase: Song = {
+        id: BASE_CARD_ID,
+        year: randomYear,
+        name: '',
+        artist: '',
+        uri: '',
+      };
 
       set({
-        activeSong: shuffled[1],
-        playlist: shuffled.slice(2),
+        // La primera canción real es la que el jugador debe posicionar
+        activeSong: shuffled[0],
+        playlist: shuffled.slice(1),
+        // Ambos equipos empiezan con la misma carta base (solo el año)
         team1Timeline: [cartaBase],
         team2Timeline: [{ ...cartaBase }],
         status: 'playing',
@@ -105,10 +118,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   guessTrack: (input: string) => {
     const { activeSong, currentTurn, addPoint } = get();
     if (!activeSong) return false;
-
     const normalizar = (t: string) =>
       t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-
     const esCorrecto = normalizar(input) === normalizar(activeSong.name);
     if (esCorrecto) addPoint(currentTurn);
     return esCorrecto;
@@ -117,10 +128,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   guessArtist: (input: string) => {
     const { activeSong, currentTurn, addPoint } = get();
     if (!activeSong) return false;
-
     const normalizar = (t: string) =>
       t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-
     const esCorrecto = normalizar(input) === normalizar(activeSong.artist);
     if (esCorrecto) addPoint(currentTurn);
     return esCorrecto;

@@ -1,11 +1,11 @@
 "use client";
-import { useGameStore } from "@/store/useGameStore";
+import { useGameStore, BASE_CARD_ID } from "@/store/useGameStore";
 import { SpotifyPlayer } from "@/components/SpotifyPlayer";
 import { useState } from "react";
 
 interface TurnResult {
   placement: boolean;
-  trackCorrect: boolean | null;   // null = no intentó adivinar
+  trackCorrect: boolean | null;
   artistCorrect: boolean | null;
   songName: string;
   artistName: string;
@@ -21,8 +21,6 @@ export default function Home() {
     currentTurn,
     points,
     placeSong,
-    isPlaying,
-    togglePlay,
     guessTrack,
     guessArtist,
   } = useGameStore();
@@ -33,13 +31,11 @@ export default function Home() {
 
   const timelineActiva = currentTurn === 0 ? team1Timeline : team2Timeline;
 
-  // ────── Lógica al colocar una carta ──────
   const handlePlace = (index: number) => {
-    if (!activeSong || result) return; // bloquea si ya se está mostrando resultado
+    if (!activeSong || result) return;
+    const songToReveal = activeSong;
 
-    const songToReveal = activeSong; // guardamos antes de que el store avance
-
-    // Evaluamos los intentos de adivinanza ANTES de avanzar el estado
+    // Evaluamos adivinanzas primero (antes de que el store cambie activeSong)
     const trackResult = trackGuess.trim() !== "" ? guessTrack(trackGuess) : null;
     const artistResult = artistGuess.trim() !== "" ? guessArtist(artistGuess) : null;
     const placementOk = placeSong(index);
@@ -59,7 +55,7 @@ export default function Home() {
     setArtistGuess("");
   };
 
-  // ────── Pantalla de inicio ──────
+  // ── Pantalla de inicio ──────────────────────────────────────────
   if (status === "idle") {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-white">
@@ -84,13 +80,11 @@ export default function Home() {
     );
   }
 
-  // ────── Pantalla de juego ──────
+  // ── Pantalla de juego ───────────────────────────────────────────
   return (
-    <main className="min-h-screen bg-black text-white p-4 font-sans pb-56">
-      {/* Spotify oculto */}
-      <SpotifyPlayer />
+    <main className="min-h-screen bg-black text-white p-4 font-sans pb-72">
 
-      {/* Modal de resultado del turno */}
+      {/* Modal de resultado */}
       {result && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-zinc-900 border border-zinc-700 rounded-3xl p-8 max-w-sm w-full text-center space-y-5 shadow-2xl">
@@ -104,20 +98,19 @@ export default function Home() {
               <p className="text-zinc-400 italic text-sm">{result.artistName}</p>
             </div>
 
-            {/* Resultados de adivinanzas */}
             <div className="space-y-2 text-sm">
               {result.trackCorrect === null ? (
                 <p className="text-zinc-600">No intentaste adivinar el nombre.</p>
               ) : (
                 <p className={result.trackCorrect ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
-                  {result.trackCorrect ? "🎵 ¡Adivinaste el nombre! +1 pto" : "🎵 No era el nombre correcto."}
+                  {result.trackCorrect ? "🎵 ¡Adivinaste el nombre! +1 pto" : "🎵 Nombre incorrecto."}
                 </p>
               )}
               {result.artistCorrect === null ? (
                 <p className="text-zinc-600">No intentaste adivinar la banda.</p>
               ) : (
                 <p className={result.artistCorrect ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
-                  {result.artistCorrect ? "🎤 ¡Adivinaste la banda! +1 pto" : "🎤 No era la banda correcta."}
+                  {result.artistCorrect ? "🎤 ¡Adivinaste la banda! +1 pto" : "🎤 Banda incorrecta."}
                 </p>
               )}
             </div>
@@ -132,28 +125,14 @@ export default function Home() {
         </div>
       )}
 
-      {/* Marcador Superior */}
+      {/* Marcador superior */}
       <div className="flex justify-around items-center mb-10 bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800 backdrop-blur-md sticky top-4 z-50">
-        <div
-          className={`transition-all duration-500 px-4 py-2 rounded-2xl ${
-            currentTurn === 0
-              ? "bg-green-500 text-black scale-110 shadow-[0_0_20px_rgba(34,197,94,0.4)]"
-              : "opacity-40"
-          }`}
-        >
+        <div className={`transition-all duration-500 px-4 py-2 rounded-2xl ${currentTurn === 0 ? "bg-green-500 text-black scale-110 shadow-[0_0_20px_rgba(34,197,94,0.4)]" : "opacity-40"}`}>
           <p className="text-[10px] font-black uppercase">Equipo 1</p>
           <p className="text-3xl font-black leading-none">{points[0]}</p>
         </div>
-
         <div className="text-2xl font-black italic text-green-500 tracking-tighter">HITAZOS</div>
-
-        <div
-          className={`transition-all duration-500 px-4 py-2 rounded-2xl ${
-            currentTurn === 1
-              ? "bg-green-500 text-black scale-110 shadow-[0_0_20px_rgba(34,197,94,0.4)]"
-              : "opacity-40"
-          }`}
-        >
+        <div className={`transition-all duration-500 px-4 py-2 rounded-2xl ${currentTurn === 1 ? "bg-green-500 text-black scale-110 shadow-[0_0_20px_rgba(34,197,94,0.4)]" : "opacity-40"}`}>
           <p className="text-[10px] font-black uppercase">Equipo 2</p>
           <p className="text-3xl font-black leading-none">{points[1]}</p>
         </div>
@@ -163,74 +142,60 @@ export default function Home() {
         Tablero Equipo {currentTurn + 1}
       </h2>
 
-      {/* Tablero / Timeline */}
+      {/* Timeline */}
       <div className="flex flex-wrap justify-center gap-3 items-center max-w-7xl mx-auto px-4">
         <DropZone index={0} onPlace={handlePlace} disabled={!!result} />
 
         {timelineActiva.map((song, i) => (
           <div key={song.id + i} className="flex items-center gap-3">
-            <div className="w-28 h-40 bg-zinc-900 border-2 border-green-500 rounded-2xl p-3 flex flex-col justify-between shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-green-500" />
-              <p className="text-2xl font-black text-white">{song.year}</p>
-              <div className="leading-tight">
-                <p className="text-[10px] font-bold text-white truncate uppercase">{song.name}</p>
-                <p className="text-[9px] text-zinc-400 italic truncate">{song.artist}</p>
-              </div>
-            </div>
+            <TimelineCard song={song} />
             <DropZone index={i + 1} onPlace={handlePlace} disabled={!!result} />
           </div>
         ))}
       </div>
 
-      {/* Panel de Control Inferior */}
-      <div className="fixed bottom-0 left-0 w-full p-6 bg-gradient-to-t from-black via-black to-transparent z-[100]">
+      {/* Panel inferior */}
+      <div className="fixed bottom-0 left-0 w-full p-5 bg-gradient-to-t from-black via-black to-transparent z-[100]">
         <div className="max-w-md mx-auto space-y-3">
-          {/* Vista previa de la carta activa */}
+
+          {/* Fila superior: carta activa + player de Spotify */}
           {activeSong && (
-            <div className="flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <div className="w-36 h-48 bg-white text-black rounded-3xl p-4 shadow-[0_20px_50px_rgba(255,255,255,0.1)] flex flex-col items-center justify-center text-center relative">
-                <div className="absolute -top-2 bg-green-500 text-black text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter shadow-md">
-                  Escuchando ahora
-                </div>
-                <span className="text-4xl mb-3">💿</span>
-                <p className="text-xs font-black uppercase leading-tight mb-1">???</p>
-                <p className="text-[10px] italic text-zinc-400">¿De qué año es?</p>
+            <div className="flex items-center gap-4 justify-center">
+              {/* Carta misteriosa */}
+              <div className="w-28 h-36 bg-zinc-900 border-2 border-dashed border-zinc-600 rounded-2xl flex flex-col items-center justify-center text-center p-2 shadow-xl">
+                <span className="text-3xl mb-2">💿</span>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase">¿De qué año?</p>
+                <p className="text-[9px] text-zinc-700 italic">Colocala en el tablero</p>
+              </div>
+
+              {/* Spotify player: solo el botón de play */}
+              <div className="flex flex-col items-center gap-1">
+                <SpotifyPlayer />
+                <span className="text-[9px] text-zinc-600 uppercase font-bold tracking-widest">Play</span>
               </div>
             </div>
           )}
 
-          {/* Botón reproducir */}
-          <button
-            onClick={() => togglePlay(!isPlaying)}
-            className={`w-full h-14 rounded-2xl font-black text-xl transition-all duration-300 active:scale-95 shadow-xl ${
-              isPlaying
-                ? "bg-green-500 text-black ring-4 ring-green-500/20"
-                : "bg-white text-black"
-            }`}
-          >
-            {isPlaying ? "⏸ PAUSAR HIT" : "▶️ REPRODUCIR HIT"}
-          </button>
-
-          {/* Adivinanza: nombre de la canción */}
+          {/* Campo: adivinar nombre de la canción */}
           <input
             value={trackGuess}
             onChange={(e) => setTrackGuess(e.target.value)}
             disabled={!!result}
-            placeholder="🎵 ¿Sabés el nombre de la canción? (+1 pto)"
+            placeholder="🎵 Nombre de la canción (+1 pto)"
             className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-2xl outline-none focus:ring-2 ring-green-500 transition-all text-sm disabled:opacity-40"
           />
 
-          {/* Adivinanza: nombre de la banda */}
+          {/* Campo: adivinar nombre de la banda */}
           <input
             value={artistGuess}
             onChange={(e) => setArtistGuess(e.target.value)}
             disabled={!!result}
-            placeholder="🎤 ¿Sabés el nombre de la banda? (+1 pto)"
+            placeholder="🎤 Nombre de la banda (+1 pto)"
             className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-2xl outline-none focus:ring-2 ring-green-500 transition-all text-sm disabled:opacity-40"
           />
 
-          <p className="text-center text-zinc-600 text-xs font-bold uppercase tracking-widest">
-            ↑ Colocá la carta arriba para confirmar tu turno
+          <p className="text-center text-zinc-700 text-[10px] font-bold uppercase tracking-widest">
+            ↑ Colocá la carta en el tablero para confirmar
           </p>
         </div>
       </div>
@@ -238,16 +203,37 @@ export default function Home() {
   );
 }
 
-// ────── DropZone ──────
-function DropZone({
-  index,
-  onPlace,
-  disabled,
-}: {
-  index: number;
-  onPlace: (i: number) => void;
-  disabled: boolean;
-}) {
+// ── Carta del timeline ──────────────────────────────────────────
+function TimelineCard({ song }: { song: { id: string; year: number; name: string; artist: string } }) {
+  const isBase = song.id === BASE_CARD_ID;
+
+  return (
+    <div className="relative group w-28 h-40">
+      {/* Cara principal: solo el año */}
+      <div className="w-full h-full bg-zinc-900 border-2 border-green-500 rounded-2xl p-3 flex flex-col items-center justify-center shadow-2xl relative overflow-hidden transition-all duration-200 group-hover:opacity-0">
+        <div className="absolute top-0 left-0 w-full h-1 bg-green-500" />
+        <p className="text-3xl font-black text-white">{song.year}</p>
+      </div>
+
+      {/* Cara hover: año + artista + canción (solo si no es la carta base) */}
+      <div className="absolute inset-0 bg-zinc-800 border-2 border-green-400 rounded-2xl p-3 flex flex-col justify-between shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200">
+        <div className="absolute top-0 left-0 w-full h-1 bg-green-400" />
+        <p className="text-2xl font-black text-white">{song.year}</p>
+        {isBase ? (
+          <p className="text-[10px] text-zinc-500 italic">Carta de referencia</p>
+        ) : (
+          <div className="leading-tight">
+            <p className="text-[10px] font-bold text-white truncate uppercase">{song.name}</p>
+            <p className="text-[9px] text-zinc-400 italic truncate">{song.artist}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Drop zone ───────────────────────────────────────────────────
+function DropZone({ index, onPlace, disabled }: { index: number; onPlace: (i: number) => void; disabled: boolean }) {
   return (
     <button
       onClick={() => !disabled && onPlace(index)}
