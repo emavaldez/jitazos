@@ -11,6 +11,7 @@ export interface Song {
 interface GameState {
   team1Timeline: Song[];
   team2Timeline: Song[];
+  playlist: Song[];           // ← FIX: faltaba esto en la interfaz
   points: [number, number];
   currentTurn: 0 | 1;
   activeSong: Song | null;
@@ -31,37 +32,39 @@ interface GameState {
 export const useGameStore = create<GameState>((set, get) => ({
   team1Timeline: [],
   team2Timeline: [],
+  playlist: [],
   points: [0, 0],
   currentTurn: 0,
   activeSong: null,
   status: 'idle',
   isPlaying: false,
-  togglePlay: (val: boolean) => set({ isPlaying: val }),  
-loadCategory: async (category: string) => {
-  try {
-    const response = await fetch(`/api/songs?category=${category}`);
-    const data = await response.json();
-    const songsArray = Array.isArray(data) ? data : data.tracks?.items || [];
 
-    if (songsArray.length < 2) return;
+  togglePlay: (val: boolean) => set({ isPlaying: val }),
 
-    const shuffled = [...songsArray].sort(() => Math.random() - 0.5);
-    const cartaBase = shuffled[0];
+  loadCategory: async (category: string) => {
+    try {
+      const response = await fetch(`/api/songs?category=${category}`);
+      const data = await response.json();
+      const songsArray = Array.isArray(data) ? data : data.tracks?.items || [];
 
-    set({
-      activeSong: shuffled[1],
-      playlist: shuffled.slice(2),
-      // IMPORTANTE: Asegurate de que esto sean ARRAYS con corchetes []
-      team1Timeline: [cartaBase], 
-      team2Timeline: [{ ...cartaBase }], 
-      status: 'playing',
-      currentTurn: 0,
-      isPlaying: false
-    });
-  } catch (error) {
-    console.error("Error cargando categoría:", error);
-  }
-},
+      if (songsArray.length < 2) return;
+
+      const shuffled = [...songsArray].sort(() => Math.random() - 0.5);
+      const cartaBase = shuffled[0];
+
+      set({
+        activeSong: shuffled[1],
+        playlist: shuffled.slice(2),
+        team1Timeline: [cartaBase],
+        team2Timeline: [{ ...cartaBase }],
+        status: 'playing',
+        currentTurn: 0,
+        isPlaying: false,
+      });
+    } catch (error) {
+      console.error("Error cargando categoría:", error);
+    }
+  },
 
   setNextSong: (song) => set({ activeSong: song, status: 'playing' }),
 
@@ -71,68 +74,56 @@ loadCategory: async (category: string) => {
     return { points: newPoints as [number, number] };
   }),
 
-placeSong: (index: number) => {
-  const { activeSong, currentTurn, team1Timeline, team2Timeline, playlist } = get();
-  if (!activeSong) return false;
+  placeSong: (index: number) => {
+    const { activeSong, currentTurn, team1Timeline, team2Timeline, playlist } = get();
+    if (!activeSong) return false;
 
-  // Elegimos el timeline del equipo actual
-  const currentTimeline = currentTurn === 0 ? [...team1Timeline] : [...team2Timeline];
-  
-  const leftSong = currentTimeline[index - 1];
-  const rightSong = currentTimeline[index];
+    const currentTimeline = currentTurn === 0 ? [...team1Timeline] : [...team2Timeline];
 
-  const isCorrect = 
-    (!leftSong || activeSong.year >= leftSong.year) &&
-    (!rightSong || activeSong.year <= rightSong.year);
+    const leftSong = currentTimeline[index - 1];
+    const rightSong = currentTimeline[index];
 
-  const nextSong = playlist[0];
-  const newPlaylist = playlist.slice(1);
+    const isCorrect =
+      (!leftSong || activeSong.year >= leftSong.year) &&
+      (!rightSong || activeSong.year <= rightSong.year);
 
-  if (isCorrect) {
-    // Insertamos la canción en el lugar elegido
-    currentTimeline.splice(index, 0, activeSong);
-  }
+    if (isCorrect) {
+      currentTimeline.splice(index, 0, activeSong);
+    }
 
-// SIEMPRE cambiamos de turno y actualizamos, haya acertado o no
     set({
       [currentTurn === 0 ? "team1Timeline" : "team2Timeline"]: currentTimeline,
       activeSong: playlist[0] || null,
       playlist: playlist.slice(1),
       currentTurn: currentTurn === 0 ? 1 : 0,
-      isPlaying: false
+      isPlaying: false,
     });
 
     return isCorrect;
   },
 
-guessTrack: (input: string) => {
-  const { activeSong, currentTurn, addPoint } = get();
-  if (!activeSong) return false;
-  
-  // Comparamos ignorando mayúsculas y espacios extra
-  const normalizar = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-  const esCorrecto = input.toLowerCase().trim() === activeSong.name.toLowerCase().trim();
-  
-  if (esCorrecto) {
-    addPoint(currentTurn);
-  }
-  return esCorrecto;
-},
-
-
-
-guessArtist: (input: string) => { // Agregado tipo string
+  guessTrack: (input: string) => {
     const { activeSong, currentTurn, addPoint } = get();
     if (!activeSong) return false;
 
-    const normalizar = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    const esCorrecto = normalizar(input) === normalizar(activeSong.artist);
+    const normalizar = (t: string) =>
+      t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
-    if (esCorrecto) {
-      addPoint(currentTurn);
-      return true;
-    }
-    return false;
+    const esCorrecto = normalizar(input) === normalizar(activeSong.name);
+    if (esCorrecto) addPoint(currentTurn);
+    return esCorrecto;
+  },
+
+  guessArtist: (input: string) => {
+    const { activeSong, currentTurn, addPoint } = get();
+    if (!activeSong) return false;
+
+    const normalizar = (t: string) =>
+      t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+    const esCorrecto = normalizar(input) === normalizar(activeSong.artist);
+    if (esCorrecto) addPoint(currentTurn);
+    return esCorrecto;
   },
 
   usePower: (type) => {
@@ -142,8 +133,6 @@ guessArtist: (input: string) => { // Agregado tipo string
       const newPoints = [...points];
       newPoints[currentTurn] -= cost;
       set({ points: newPoints as [number, number] });
-      // Aquí dispararías la lógica visual del poder
     }
-  }
+  },
 }));
-
