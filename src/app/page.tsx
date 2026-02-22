@@ -28,17 +28,24 @@ export default function Home() {
   const [trackGuess, setTrackGuess] = useState("");
   const [artistGuess, setArtistGuess] = useState("");
   const [result, setResult] = useState<TurnResult | null>(null);
+  const [pendingIndex, setPendingIndex] = useState<number | null>(null);
 
   const timelineActiva = currentTurn === 0 ? team1Timeline : team2Timeline;
 
   const handlePlace = (index: number) => {
     if (!activeSong || result) return;
+    // Primer click: pide confirmación
+    setPendingIndex(index);
+  };
+
+  const handleConfirm = () => {
+    if (pendingIndex === null || !activeSong || result) return;
+    setPendingIndex(null);
     const songToReveal = activeSong;
 
-    // Evaluamos adivinanzas primero (antes de que el store cambie activeSong)
     const trackResult = trackGuess.trim() !== "" ? guessTrack(trackGuess) : null;
     const artistResult = artistGuess.trim() !== "" ? guessArtist(artistGuess) : null;
-    const placementOk = placeSong(index);
+    const placementOk = placeSong(pendingIndex);
 
     setResult({
       placement: placementOk,
@@ -48,6 +55,8 @@ export default function Home() {
       artistName: songToReveal.artist,
     });
   };
+
+  const handleCancel = () => setPendingIndex(null);
 
   const handleNextTurn = () => {
     setResult(null);
@@ -83,6 +92,34 @@ export default function Home() {
   // ── Pantalla de juego ───────────────────────────────────────────
   return (
     <main className="min-h-screen bg-black text-white p-4 font-sans pb-72">
+
+      {/* Modal de confirmación */}
+      {pendingIndex !== null && !result && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-3xl p-8 max-w-sm w-full text-center space-y-5 shadow-2xl">
+            <h2 className="text-xl font-black uppercase tracking-tight text-white">
+              ¿Confirmás esta posición?
+            </h2>
+            <p className="text-zinc-400 text-sm">
+              Vas a colocar la carta en ese lugar del tablero. Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancel}
+                className="flex-1 bg-zinc-800 text-white py-4 rounded-2xl font-black text-base hover:bg-zinc-700 active:scale-95 transition-all"
+              >
+                CANCELAR
+              </button>
+              <button
+                onClick={handleConfirm}
+                className="flex-1 bg-green-500 text-black py-4 rounded-2xl font-black text-base hover:bg-green-400 active:scale-95 transition-all"
+              >
+                ¡CONFIRMAR!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de resultado */}
       {result && (
@@ -144,12 +181,12 @@ export default function Home() {
 
       {/* Timeline */}
       <div className="flex flex-wrap justify-center gap-3 items-center max-w-7xl mx-auto px-4">
-        <DropZone index={0} onPlace={handlePlace} disabled={!!result} />
+        <DropZone index={0} onPlace={handlePlace} disabled={!!result || pendingIndex !== null} />
 
         {timelineActiva.map((song, i) => (
           <div key={song.id + i} className="flex items-center gap-3">
             <TimelineCard song={song} />
-            <DropZone index={i + 1} onPlace={handlePlace} disabled={!!result} />
+            <DropZone index={i + 1} onPlace={handlePlace} disabled={!!result || pendingIndex !== null} />
           </div>
         ))}
       </div>
