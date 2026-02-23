@@ -15,7 +15,7 @@ async function transferPlayback(token: string, deviceId: string) {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ device_ids: [deviceId], play: false }),
+    body: JSON.stringify({ device_ids: [deviceId], play: true }),
   });
 }
 
@@ -104,22 +104,28 @@ export const SpotifyPlayer = () => {
 
   // Reaccionar a play/pause y cambio de canción
   useEffect(() => {
-    if (!playerRef.current || !deviceIdRef.current || !activeSong) return;
-    const token = getTokenFromCookie();
-    if (!token) return;
+    const handlePlayback = async () => {
+      if (!playerRef.current || !deviceIdRef.current || !activeSong) return;
+      const token = getTokenFromCookie();
+      if (!token) return;
 
-    const uri = `spotify:track:${activeSong.id}`;
+      const uri = `spotify:track:${activeSong.id}`;
 
-    if (isPlaying) {
-      if (currentUriRef.current !== uri) {
-        currentUriRef.current = uri;
-        playTrack(token, deviceIdRef.current, uri);
+      if (isPlaying) {
+        // activateElement vincula el gesto del usuario al SDK para evitar bloqueo de autoplay
+        await playerRef.current.activateElement();
+        if (currentUriRef.current !== uri) {
+          currentUriRef.current = uri;
+          await playTrack(token, deviceIdRef.current, uri);
+        } else {
+          await playerRef.current.resume();
+        }
       } else {
-        playerRef.current.resume();
+        await playerRef.current.pause();
       }
-    } else {
-      playerRef.current.pause();
-    }
+    };
+
+    handlePlayback();
   }, [isPlaying, activeSong]);
 
   if (!sdkReady || !connected) return null;
