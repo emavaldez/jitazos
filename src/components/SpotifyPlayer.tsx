@@ -15,19 +15,27 @@ async function transferPlayback(token: string, deviceId: string) {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ device_ids: [deviceId], play: true }),
+    body: JSON.stringify({ device_ids: [deviceId] }),
   });
+  console.log("TRANSFER STATUS:", res.status);
 }
 
 async function playTrack(token: string, deviceId: string, spotifyUri: string) {
-  await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ uris: [spotifyUri] }),
-  });
+  const res = await fetch(
+    `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ uris: [spotifyUri] }),
+    }
+  );
+
+  console.log("PLAY STATUS:", res.status);
+  const text = await res.text();
+  console.log("PLAY RESPONSE:", text);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
