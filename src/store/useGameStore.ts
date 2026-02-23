@@ -1,132 +1,134 @@
-// src/store/useGameStore.ts
-import { create } from "zustand";
+import { create } from 'zustand';
 
 export interface Song {
   id: string;
   year: number;
   name: string;
   artist: string;
-  uri: string;
 }
-
-export interface GameConfig {
-  numTeams: number;
-  numSongs: number;
-  genres: string[];
-}
-
-export const BASE_CARD_ID = "__base__";
-
-export const GENRE_LABELS: Record<string, string> = {
-  rock_int: "Rock Internacional",
-  rock_arg: "Rock Argentino",
-  pop: "Pop",
-  punk: "Punk",
-};
 
 interface GameState {
-  status: "config" | "playing" | "won";
-  config: GameConfig;
-  timelines: Song[][];
+  team1Timeline: Song[];
+  team2Timeline: Song[];
   playlist: Song[];
-  points: number[];
-  currentTurn: number;
+  points: [number, number];
+  currentTurn: 0 | 1;
   activeSong: Song | null;
+  status: 'idle' | 'loading' | 'playing' | 'won';
+  isPlaying: boolean;
 
-  setConfig: (config: Partial<GameConfig>) => void;
+  // Acciones
   startGame: () => Promise<void>;
-  addPoint: (team: number) => void;
+  addPoint: (team: 0 | 1) => void;
   placeSong: (index: number) => boolean;
   guessTrack: (input: string) => boolean;
   guessArtist: (input: string) => boolean;
+  togglePlay: (val: boolean) => void;
+  resetGame: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
-  status: "config",
-  config: { numTeams: 2, numSongs: 8, genres: ["rock_int"] },
-  timelines: [],
+  team1Timeline: [],
+  team2Timeline: [],
   playlist: [],
-  points: [],
+  points: [0, 0],
   currentTurn: 0,
   activeSong: null,
+  status: 'idle',
+  isPlaying: false,
 
-  setConfig: (partial) =>
-    set((state) => ({ config: { ...state.config, ...partial } })),
+  togglePlay: (val: boolean) => set({ isPlaying: val }),
+
+  resetGame: () => set({
+    team1Timeline: [],
+    team2Timeline: [],
+    playlist: [],
+    points: [0, 0],
+    currentTurn: 0,
+    activeSong: null,
+    status: 'idle',
+    isPlaying: false,
+  }),
 
   startGame: async () => {
-    const { config } = get();
-    const { numTeams, numSongs, genres } = config;
+    set({ status: 'loading' });
     try {
-      const res = await fetch(
-        `/api/songs?category=${genres.join(",")}&limit=${numSongs + 5}`
-      );
-      const data = await res.json();
-      const songs: Song[] = Array.isArray(data) ? data : [];
-      if (songs.length < 2) return;
+      const response = await fetch('/api/songs');
+      const data = await response.json();
+      const songsArray: Song[] = Array.isArray(data) ? data : [];
 
-      const shuffled = [...songs].sort(() => Math.random() - 0.5);
-      const year = Math.floor(Math.random() * (2025 - 1960 + 1)) + 1960;
-      const baseCard: Song = { id: BASE_CARD_ID, year, name: "", artist: "", uri: "" };
+      if (songsArray.length < 3) return;
+
+      // Primera carta del tablero (compartida por ambos equipos como base)
+      const cartaBase = songsArray[0];
 
       set({
-        status: "playing",
-        timelines: Array.from({ length: numTeams }, () => [{ ...baseCard }]),
-        playlist: shuffled.slice(1),
-        activeSong: shuffled[0],
-        points: Array(numTeams).fill(0),
+        activeSong: songsArray[1],
+        playlist: songsArray.slice(2),
+        team1Timeline: [cartaBase],
+        team2Timeline: [{ ...cartaBase }],
+        status: 'playing',
         currentTurn: 0,
+        isPlaying: false,
+        points: [0, 0],
       });
-    } catch (e) {
-      console.error("Error iniciando juego:", e);
+    } catch (error) {
+      console.error("Error cargando canciones:", error);
+      set({ status: 'idle' });
     }
   },
 
-  addPoint: (team) =>
-    set((state) => {
-      const pts = [...state.points];
-      pts[team] += 1;
-      return { points: pts };
-    }),
+  addPoint: (team) => set((state) => {
+    const newPoints = [...state.points];
+    newPoints[team] += 1;
+    return { points: newPoints as [number, number] };
+  }),
 
-  placeSong: (index) => {
-    const { activeSong, currentTurn, timelines, playlist, config } = get();
+  placeSong: (index: number) => {
+    const { activeSong, currentTurn, team1Timeline, team2Timeline, playlist } = get();
     if (!activeSong) return false;
 
-    const timeline = [...timelines[currentTurn]];
+    const currentTimeline = currentTurn === 0 ? [...team1Timeline] : [...team2Timeline];
+
+    const leftSong = currentTimeline[index - 1];
+    const rightSong = currentTimeline[index];
+
     const isCorrect =
-      (!timeline[index - 1] || activeSong.year >= timeline[index - 1].year) &&
-      (!timeline[index] || activeSong.year <= timeline[index].year);
+      (!leftSong || activeSong.year >= leftSong.year) &&
+      (!rightSong || activeSong.year <= rightSong.year);
 
-    if (isCorrect) timeline.splice(index, 0, activeSong);
-
-    const newTimelines = timelines.map((t, i) => (i === currentTurn ? timeline : t));
-    const nextTurn = (currentTurn + 1) % config.numTeams;
+    if (isCorrect) {
+      currentTimeline.splice(index, 0, activeSong);
+    }
 
     set({
-      timelines: newTimelines,
+      [currentTurn === 0 ? "team1Timeline" : "team2Timeline"]: currentTimeline,
       activeSong: playlist[0] || null,
       playlist: playlist.slice(1),
-      currentTurn: nextTurn,
+      currentTurn: currentTurn === 0 ? 1 : 0,
+      isPlaying: false,
     });
 
     return isCorrect;
   },
 
-  guessTrack: (input) => {
+  guessTrack: (input: string) => {
     const { activeSong, currentTurn, addPoint } = get();
     if (!activeSong) return false;
-    const n = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    const ok = n(input) === n(activeSong.name);
-    if (ok) addPoint(currentTurn);
-    return ok;
+    const normalizar = (t: string) =>
+      t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const esCorrecto = normalizar(input) === normalizar(activeSong.name);
+    if (esCorrecto) addPoint(currentTurn);
+    return esCorrecto;
   },
 
-  guessArtist: (input) => {
+  guessArtist: (input: string) => {
     const { activeSong, currentTurn, addPoint } = get();
     if (!activeSong) return false;
-    const n = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    const ok = n(input) === n(activeSong.artist);
-    if (ok) addPoint(currentTurn);
-    return ok;
+    const normalizar = (t: string) =>
+      t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const esCorrecto = normalizar(input) === normalizar(activeSong.artist);
+    if (esCorrecto) addPoint(currentTurn);
+    return esCorrecto;
   },
 }));
