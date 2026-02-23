@@ -87,19 +87,22 @@ export default function Home() {
   };
 
   // Al confirmar la colocación, evaluamos las adivinanzas primero y luego colocamos
-  const confirmarYColocar = (index: number) => {
+const confirmarYColocar = (index: number) => {
     const confirmar = window.confirm("¿Colocar la carta en esta posición?");
     if (!confirmar) return;
 
-    // Evaluar adivinanzas antes de avanzar el turno
+    // 1. Evaluamos adivinanzas con la canción que está SONANDO ahora
     const trackOk = trackGuess.trim() ? guessTrack(trackGuess) : false;
     const artistOk = artistGuess.trim() ? guessArtist(artistGuess) : false;
 
+    // 2. Intentamos colocar la canción (esto cambiará el activeSong en el store)
     const exito = placeSong(index);
+
+    // 3. Limpiamos inputs locales
     setTrackGuess("");
     setArtistGuess("");
 
-    // Armar mensaje de resultado
+    // 4. Feedback al usuario
     const msgs: string[] = [];
     if (trackGuess.trim()) msgs.push(trackOk ? "🎵 Nombre correcto +1" : "🎵 Nombre incorrecto");
     if (artistGuess.trim()) msgs.push(artistOk ? "🎤 Artista correcto +1" : "🎤 Artista incorrecto");
