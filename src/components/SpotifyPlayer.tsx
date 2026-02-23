@@ -15,7 +15,7 @@ async function transferPlayback(token: string, deviceId: string) {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ device_ids: [deviceId], play: false }),
+    body: JSON.stringify({ device_ids: [deviceId], play: true }),
   });
 }
 
@@ -30,13 +30,6 @@ async function playTrack(token: string, deviceId: string, spotifyUri: string) {
   });
 }
 
-async function pausePlayback(token: string) {
-  await fetch("https://api.spotify.com/v1/me/player/pause", {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyPlayer = any;
 
@@ -46,6 +39,7 @@ export const SpotifyPlayer = () => {
   const deviceIdRef = useRef<string | null>(null);
   const [sdkReady, setSdkReady] = useState(false);
   const [connected, setConnected] = useState(false);
+  const currentUriRef = useRef<string | null>(null);
 
   // Cargar el SDK una sola vez
   useEffect(() => {
@@ -84,12 +78,14 @@ export const SpotifyPlayer = () => {
       volume: 0.8,
     });
 
-    player.addListener("ready", async ({ device_id }: { device_id: string }) => {
+    player.addListener("ready", ({ device_id }: { device_id: string }) => {
       deviceIdRef.current = device_id;
-      // Registrar este dispositivo como activo en la cuenta ANTES de habilitar el botón
       const t = getTokenFromCookie();
-      if (t) await transferPlayback(t, device_id);
-      setConnected(true);
+      if (t) {
+        transferPlayback(t, device_id).then(() => setConnected(true));
+      } else {
+        setConnected(true);
+      }
     });
 
     player.addListener("not_ready", () => setConnected(false));
@@ -101,20 +97,30 @@ export const SpotifyPlayer = () => {
     return () => player.disconnect();
   }, [sdkReady]);
 
+  // Resetear URI cacheado cuando cambia la canción activa (nuevo turno)
+  useEffect(() => {
+    currentUriRef.current = null;
+  }, [activeSong]);
+
   // Reaccionar a play/pause
   useEffect(() => {
     const handlePlayback = async () => {
-      if (!deviceIdRef.current || !activeSong) return;
+      if (!playerRef.current || !deviceIdRef.current || !activeSong) return;
       const token = getTokenFromCookie();
       if (!token) return;
 
+      const uri = `spotify:track:${activeSong.id}`;
+
       if (isPlaying) {
-        if (playerRef.current) await playerRef.current.activateElement();
-        // Re-transferir antes de reproducir para asegurarnos que este device está activo
-        await transferPlayback(token, deviceIdRef.current);
-        await playTrack(token, deviceIdRef.current, `spotify:track:${activeSong.id}`);
+        await playerRef.current.activateElement();
+        if (currentUriRef.current !== uri) {
+          currentUriRef.current = uri;
+          await playTrack(token, deviceIdRef.current, uri);
+        } else {
+          await playerRef.current.resume();
+        }
       } else {
-        await pausePlayback(token);
+        await playerRef.current.pause();
       }
     };
 
