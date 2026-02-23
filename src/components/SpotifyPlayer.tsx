@@ -1,7 +1,7 @@
 "use client";
 
-import { useGameStore } from "@/store/useGameStore";
 import { useEffect, useRef, useState } from "react";
+import { useGameStore } from "@/store/useGameStore";
 
 function getToken(): string | null {
   if (typeof document === "undefined") return null;
@@ -9,21 +9,23 @@ function getToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-type SpotifyPlayerType = Spotify.Player;
-
 export const SpotifyPlayer = () => {
   const { activeSong, isPlaying } = useGameStore();
 
-  const playerRef = useRef<SpotifyPlayerType | null>(null);
+  const playerRef = useRef<any>(null);
+  const deviceIdRef = useRef<string | null>(null);
+
   const [sdkReady, setSdkReady] = useState(false);
-  const [isPlayerReady, setIsPlayerReady] = useState(false);
+  const [connected, setConnected] = useState(false);
 
-  // 1️⃣ Cargar SDK
+  // ---------------------------
+  // Cargar SDK
+  // ---------------------------
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    if ((window as any).Spotify) {
-      setSdkReady(true);
+    if (document.getElementById("spotify-sdk")) {
+      if ((window as any).Spotify) {
+        setSdkReady(true);
+      }
       return;
     }
 
@@ -32,48 +34,56 @@ export const SpotifyPlayer = () => {
     };
 
     const script = document.createElement("script");
+    script.id = "spotify-sdk";
     script.src = "https://sdk.scdn.co/spotify-player.js";
     script.async = true;
     document.body.appendChild(script);
   }, []);
 
-  // 2️⃣ Inicializar Player
+  // ---------------------------
+  // Inicializar Player
+  // ---------------------------
   useEffect(() => {
     if (!sdkReady) return;
 
     const token = getToken();
     if (!token) return;
 
-    const player = new (window as any).Spotify.Player({
-      name: "HITAZOS",
-      getOAuthToken: async (cb: (token: string) => void) => {
-        let t = getToken();
-        if (!t) {
-          await fetch("/api/auth/refresh");
-          t = getToken();
-        }
-        cb(t || "");
+    const Spotify = (window as any).Spotify;
+
+    const player = new Spotify.Player({
+      name: "HITAZOS Player",
+      getOAuthToken: (cb: (token: string) => void) => {
+        const t = getToken();
+        if (t) cb(t);
       },
       volume: 0.8,
     });
 
-    player.addListener("ready", () => {
-      console.log("✅ Spotify Player Ready");
-      setIsPlayerReady(true);
+    player.addListener("ready", async ({ device_id }: any) => {
+      deviceIdRef.current = device_id;
+
+      const t = getToken();
+      if (!t) return;
+
+      // Transfer playback al Web SDK
+      await fetch("https://api.spotify.com/v1/me/player", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${t}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          device_ids: [device_id],
+        }),
+      });
+
+      setConnected(true);
     });
 
-    player.addListener("initialization_error", ({ message }) =>
-      console.error("init error:", message)
-    );
-    player.addListener("authentication_error", ({ message }) =>
-      console.error("auth error:", message)
-    );
-    player.addListener("account_error", ({ message }) =>
-      console.error("account error:", message)
-    );
-    player.addListener("playback_error", ({ message }) =>
-      console.error("playback error:", message)
-    );
+    player.addListener("not_ready", () => {
+      setConnected(false);
+    });
 
     player.connect().then((success: boolean) => {
       if (success) {
@@ -86,10 +96,14 @@ export const SpotifyPlayer = () => {
     };
   }, [sdkReady]);
 
-  // 3️⃣ Reproducir cuando cambia canción o estado
+  // ---------------------------
+  // Play / Pause
+  // ---------------------------
   useEffect(() => {
-    const play = async () => {
-      if (!playerRef.current || !isPlayerReady || !activeSong) return;
+    const playSong = async () => {
+      if (!playerRef.current) return;
+      if (!deviceIdRef.current) return;
+      if (!activeSong) return;
 
       const token = getToken();
       if (!token) return;
@@ -97,26 +111,30 @@ export const SpotifyPlayer = () => {
       const uri = `spotify:track:${activeSong.id}`;
 
       if (isPlaying) {
-        // Necesario para autoplay policies del browser
         await playerRef.current.activateElement();
 
-        await fetch("https://api.spotify.com/v1/me/player/play", {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            uris: [uri],
-          }),
-        });
+        await fetch(
+          `https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              uris: [uri],
+            }),
+          }
+        );
       } else {
         await playerRef.current.pause();
       }
     };
 
-    play();
-  }, [activeSong, isPlaying, isPlayerReady]);
+    playSong();
+  }, [isPlaying, activeSong]);
+
+  if (!sdkReady || !connected) return null;
 
   return null;
 };
