@@ -15,6 +15,7 @@ export const SpotifyPlayer = () => {
   const playerRef = useRef<any>(null);
   const deviceIdRef = useRef<string | null>(null);
   const [sdkReady, setSdkReady] = useState(false);
+  const [connected, setConnected] = useState(false);
   const currentUriRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -41,12 +42,18 @@ export const SpotifyPlayer = () => {
 
     player.addListener("ready", ({ device_id }: { device_id: string }) => {
       deviceIdRef.current = device_id;
-      // Transferencia silenciosa inicial
+      // Registrar device silenciosamente, sin arrancar reproducción
       fetch(SPOTIFY_API_BASE, {
         method: "PUT",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${getTokenFromCookie()}`, "Content-Type": "application/json" },
         body: JSON.stringify({ device_ids: [device_id], play: false }),
-      });
+      }).then(() => setConnected(true))
+        .catch(() => setConnected(true)); // conectado igual, el play lo manejamos aparte
+    });
+
+    player.addListener("not_ready", () => {
+      deviceIdRef.current = null;
+      setConnected(false);
     });
 
     player.connect();
@@ -54,10 +61,17 @@ export const SpotifyPlayer = () => {
     return () => player.disconnect();
   }, [sdkReady]);
 
+  // Resetear URI cacheado cuando cambia la canción activa (nuevo turno)
   useEffect(() => {
+    currentUriRef.current = null;
+  }, [activeSong?.id]);
+
+  useEffect(() => {
+    if (!connected) return; // no hacer nada hasta que el device esté registrado
     const updateAudio = async () => {
       if (!deviceIdRef.current || !activeSong?.id) return;
       const token = getTokenFromCookie();
+      if (!token) return;
       const uri = `spotify:track:${activeSong.id}`;
 
       if (isPlaying) {
@@ -77,7 +91,7 @@ export const SpotifyPlayer = () => {
       }
     };
     updateAudio();
-  }, [isPlaying, activeSong?.id]);
+  }, [isPlaying, activeSong?.id, connected]);
 
   return null;
 };
