@@ -2,14 +2,6 @@
 import { useGameStore } from "@/store/useGameStore";
 import { useEffect, useRef, useState } from "react";
 
-interface SpotifySDKPlayer {
-  connect: () => Promise<boolean>;
-  disconnect: () => void;
-  resume: () => Promise<void>;
-  pause: () => Promise<void>;
-  addListener: (event: string, cb: (data: unknown) => void) => void;
-}
-
 function getTokenFromCookie(): string | null {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(/spotify_token=([^;]+)/);
@@ -27,9 +19,12 @@ async function playTrack(token: string, deviceId: string, spotifyUri: string) {
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyPlayer = any;
+
 export const SpotifyPlayer = () => {
   const { activeSong, isPlaying } = useGameStore();
-  const playerRef = useRef<SpotifySDKPlayer | null>(null);
+  const playerRef = useRef<AnyPlayer>(null);
   const deviceIdRef = useRef<string | null>(null);
   const [sdkReady, setSdkReady] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -37,15 +32,15 @@ export const SpotifyPlayer = () => {
 
   // Cargar el SDK una sola vez
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+
     if (document.getElementById("spotify-sdk")) {
-      // Ya cargado, ver si ya disparó el callback
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((window as any).Spotify) setSdkReady(true);
+      if (w.Spotify) setSdkReady(true);
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
+    w.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
 
     const script = document.createElement("script");
     script.id = "spotify-sdk";
@@ -62,9 +57,11 @@ export const SpotifyPlayer = () => {
     if (!token) return;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const player = new (window as any).Spotify.Player({
+    const w = window as any;
+
+    const player: AnyPlayer = new w.Spotify.Player({
       name: "HITAZOS",
-      getOAuthToken: async (cb: (token: string) => void) => {
+      getOAuthToken: async (cb: (t: string) => void) => {
         let t = getTokenFromCookie();
         if (!t) {
           await fetch("/api/auth/refresh");
@@ -75,15 +72,14 @@ export const SpotifyPlayer = () => {
       volume: 0.8,
     });
 
-    player.addListener("ready", (data) => {
-      const { device_id } = data as { device_id: string };
+    player.addListener("ready", ({ device_id }: { device_id: string }) => {
       deviceIdRef.current = device_id;
       setConnected(true);
     });
 
     player.addListener("not_ready", () => setConnected(false));
 
-    player.connect().then((ok) => {
+    player.connect().then((ok: boolean) => {
       if (ok) playerRef.current = player;
     });
 
@@ -111,5 +107,5 @@ export const SpotifyPlayer = () => {
   }, [isPlaying, activeSong]);
 
   if (!sdkReady || !connected) return null;
-  return null; // No hay UI — el control está en page.tsx
+  return null;
 };
