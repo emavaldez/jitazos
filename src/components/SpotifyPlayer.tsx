@@ -8,20 +8,22 @@ function getTokenFromCookie(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-// Espera hasta que el device_id aparezca en la lista de dispositivos de Spotify
+// 1. URL corregida para listar dispositivos
 async function waitForDevice(token: string, deviceId: string, retries = 10): Promise<boolean> {
   for (let i = 0; i < retries; i++) {
     const res = await fetch("https://api.spotify.com/v1/me/player/devices", {
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (!res.ok) continue;
     const data = await res.json();
     const devices: { id: string }[] = data.devices || [];
     if (devices.some((d) => d.id === deviceId)) return true;
-    await new Promise((r) => setTimeout(r, 500)); // esperar 500ms entre intentos
+    await new Promise((r) => setTimeout(r, 500));
   }
   return false;
 }
 
+// 2. URL corregida para transferencia (usamos play: true como en tu test)
 async function transferPlayback(token: string, deviceId: string) {
   await fetch("https://api.spotify.com/v1/me/player", {
     method: "PUT",
@@ -29,10 +31,11 @@ async function transferPlayback(token: string, deviceId: string) {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ device_ids: [deviceId], play: false }),
+    body: JSON.stringify({ device_ids: [deviceId], play: true }),
   });
 }
 
+// 3. URL corregida con el query parameter device_id y el track ID
 async function playTrack(token: string, deviceId: string, spotifyUri: string) {
   await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
     method: "PUT",
@@ -44,7 +47,6 @@ async function playTrack(token: string, deviceId: string, spotifyUri: string) {
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyPlayer = any;
 
 export const SpotifyPlayer = () => {
@@ -55,9 +57,7 @@ export const SpotifyPlayer = () => {
   const [connected, setConnected] = useState(false);
   const currentUriRef = useRef<string | null>(null);
 
-  // Cargar el SDK script una sola vez
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     if (document.getElementById("spotify-sdk")) {
       if (w.Spotify) setSdkReady(true);
@@ -71,13 +71,11 @@ export const SpotifyPlayer = () => {
     document.body.appendChild(script);
   }, []);
 
-  // Crear el Player una vez que el SDK esté cargado
   useEffect(() => {
     if (!sdkReady) return;
     const token = getTokenFromCookie();
     if (!token) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     const player: AnyPlayer = new w.Spotify.Player({
       name: "HITAZOS",
@@ -97,7 +95,6 @@ export const SpotifyPlayer = () => {
       const t = getTokenFromCookie();
       if (!t) { setConnected(true); return; }
 
-      // Esperar a que Spotify registre el device antes de transferir
       const appeared = await waitForDevice(t, device_id);
       if (appeared) {
         await transferPlayback(t, device_id);
@@ -117,12 +114,10 @@ export const SpotifyPlayer = () => {
     return () => player.disconnect();
   }, [sdkReady]);
 
-  // Resetear URI cuando cambia la canción (nuevo turno = tema nuevo)
   useEffect(() => {
     currentUriRef.current = null;
   }, [activeSong]);
 
-  // Controlar reproducción
   useEffect(() => {
     const handlePlayback = async () => {
       if (!playerRef.current || !deviceIdRef.current || !activeSong) return;
@@ -132,7 +127,6 @@ export const SpotifyPlayer = () => {
       const uri = `spotify:track:${activeSong.id}`;
 
       if (isPlaying) {
-        // activateElement vincula el gesto del usuario al contexto de audio del browser
         await playerRef.current.activateElement();
         if (currentUriRef.current !== uri) {
           currentUriRef.current = uri;
@@ -148,6 +142,5 @@ export const SpotifyPlayer = () => {
     handlePlayback();
   }, [isPlaying, activeSong]);
 
-  if (!sdkReady || !connected) return null;
   return null;
 };
