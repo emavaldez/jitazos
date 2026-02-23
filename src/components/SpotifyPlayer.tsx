@@ -8,9 +8,18 @@ function getTokenFromCookie(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+async function transferPlayback(token: string, deviceId: string) {
+  await fetch("https://api.spotify.com/v1/me/player", {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ device_ids: [deviceId], play: false }),
+  });
+}
+
 async function playTrack(token: string, deviceId: string, spotifyUri: string) {
-  // Pasar device_id en la URL activa el dispositivo automáticamente,
-  // sin necesidad de un transferPlayback previo
   await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
     method: "PUT",
     headers: {
@@ -37,7 +46,6 @@ export const SpotifyPlayer = () => {
   const deviceIdRef = useRef<string | null>(null);
   const [sdkReady, setSdkReady] = useState(false);
   const [connected, setConnected] = useState(false);
-  const currentUriRef = useRef<string | null>(null);
 
   // Cargar el SDK una sola vez
   useEffect(() => {
@@ -76,8 +84,11 @@ export const SpotifyPlayer = () => {
       volume: 0.8,
     });
 
-    player.addListener("ready", ({ device_id }: { device_id: string }) => {
+    player.addListener("ready", async ({ device_id }: { device_id: string }) => {
       deviceIdRef.current = device_id;
+      // Registrar este dispositivo como activo en la cuenta ANTES de habilitar el botón
+      const t = getTokenFromCookie();
+      if (t) await transferPlayback(t, device_id);
       setConnected(true);
     });
 
@@ -90,11 +101,6 @@ export const SpotifyPlayer = () => {
     return () => player.disconnect();
   }, [sdkReady]);
 
-  // Resetear URI cacheado cuando cambia la canción (nuevo turno)
-  useEffect(() => {
-    currentUriRef.current = null;
-  }, [activeSong]);
-
   // Reaccionar a play/pause
   useEffect(() => {
     const handlePlayback = async () => {
@@ -102,16 +108,12 @@ export const SpotifyPlayer = () => {
       const token = getTokenFromCookie();
       if (!token) return;
 
-      const uri = `spotify:track:${activeSong.id}`;
-
       if (isPlaying) {
-        // activateElement conecta el gesto del usuario al SDK
         if (playerRef.current) await playerRef.current.activateElement();
-        // Siempre llamamos playTrack con device_id — activa el dispositivo y reproduce el tema
-        currentUriRef.current = uri;
-        await playTrack(token, deviceIdRef.current, uri);
+        // Re-transferir antes de reproducir para asegurarnos que este device está activo
+        await transferPlayback(token, deviceIdRef.current);
+        await playTrack(token, deviceIdRef.current, `spotify:track:${activeSong.id}`);
       } else {
-        // Pausa vía API REST (más confiable que el SDK para esto)
         await pausePlayback(token);
       }
     };
