@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
 
   response.cookies.set("spotify_token", tokenData.access_token, {
     httpOnly: false, // necesario para que el SDK lo lea desde el cliente
+      secure: true, // 👈 CLAVE EN VERCEL
     maxAge: tokenData.expires_in, // ~3600 segundos
     path: "/",
     sameSite: "lax",
@@ -47,6 +48,7 @@ export async function GET(request: NextRequest) {
 
   response.cookies.set("spotify_refresh_token", tokenData.refresh_token, {
     httpOnly: true,
+      secure: true, // 👈 CLAVE EN VERCEL
     maxAge: 60 * 60 * 24 * 30, // 30 días
     path: "/",
     sameSite: "lax",
