@@ -15,7 +15,8 @@ async function transferPlayback(token: string, deviceId: string) {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ device_ids: [deviceId], play: true }),
+    // play: false — solo registramos el dispositivo, sin arrancar nada
+    body: JSON.stringify({ device_ids: [deviceId], play: false }),
   });
 }
 
@@ -45,14 +46,11 @@ export const SpotifyPlayer = () => {
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
-
     if (document.getElementById("spotify-sdk")) {
       if (w.Spotify) setSdkReady(true);
       return;
     }
-
     w.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
-
     const script = document.createElement("script");
     script.id = "spotify-sdk";
     script.src = "https://sdk.scdn.co/spotify-player.js";
@@ -63,13 +61,11 @@ export const SpotifyPlayer = () => {
   // Inicializar el Player cuando el SDK esté listo
   useEffect(() => {
     if (!sdkReady) return;
-
     const token = getTokenFromCookie();
     if (!token) return;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
-
     const player: AnyPlayer = new w.Spotify.Player({
       name: "HITAZOS",
       getOAuthToken: async (cb: (t: string) => void) => {
@@ -102,7 +98,13 @@ export const SpotifyPlayer = () => {
     return () => player.disconnect();
   }, [sdkReady]);
 
-  // Reaccionar a play/pause y cambio de canción
+  // Cuando cambia la canción activa (nuevo turno), resetear el URI cacheado
+  // para que la próxima vez que el usuario presione play, siempre se reproduzca el tema nuevo
+  useEffect(() => {
+    currentUriRef.current = null;
+  }, [activeSong]);
+
+  // Reaccionar a play/pause
   useEffect(() => {
     const handlePlayback = async () => {
       if (!playerRef.current || !deviceIdRef.current || !activeSong) return;
@@ -112,7 +114,7 @@ export const SpotifyPlayer = () => {
       const uri = `spotify:track:${activeSong.id}`;
 
       if (isPlaying) {
-        // activateElement vincula el gesto del usuario al SDK para evitar bloqueo de autoplay
+        // activateElement vincula el gesto del usuario al SDK (evita bloqueo de autoplay)
         await playerRef.current.activateElement();
         if (currentUriRef.current !== uri) {
           currentUriRef.current = uri;
