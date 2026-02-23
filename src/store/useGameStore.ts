@@ -56,13 +56,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       const songsArray: Song[] = Array.isArray(data) ? data : [];
       if (songsArray.length < 3) return;
 
-      const cartaBase = songsArray[0];
-
       set({
-        activeSong: songsArray[1],
+        activeSong: songsArray[1], // La primera canción a adivinar
         playlist: songsArray.slice(2),
-        team1Timeline: [cartaBase],
-        team2Timeline: [{ ...cartaBase }],
+        team1Timeline: [songsArray[0]],
+        team2Timeline: [songsArray[0]],
         status: 'playing',
         currentTurn: 0,
         isPlaying: false,
@@ -96,13 +94,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       currentTimeline.splice(index, 0, activeSong);
     }
 
-    // Al colocar la canción, pasamos a la siguiente y pausamos el reproductor
+    // Pasamos a la siguiente canción de la lista
+    const nextSong = playlist[0] || null;
+    const remainingPlaylist = playlist.slice(1);
+
     set({
       [currentTurn === 0 ? "team1Timeline" : "team2Timeline"]: currentTimeline,
-      activeSong: playlist[0] || null,
-      playlist: playlist.slice(1),
+      activeSong: nextSong,
+      playlist: remainingPlaylist,
       currentTurn: currentTurn === 0 ? 1 : 0,
-      isPlaying: false, // Forzamos pausa para el nuevo turno
+      isPlaying: false, // Forzamos pausa para que el nuevo jugador inicie su turno
     });
 
     return isCorrect;
