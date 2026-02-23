@@ -8,6 +8,17 @@ function getTokenFromCookie(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+async function transferPlayback(token: string, deviceId: string) {
+  await fetch("https://api.spotify.com/v1/me/player", {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ device_ids: [deviceId], play: false }),
+  });
+}
+
 async function playTrack(token: string, deviceId: string, spotifyUri: string) {
   await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
     method: "PUT",
@@ -74,6 +85,9 @@ export const SpotifyPlayer = () => {
 
     player.addListener("ready", ({ device_id }: { device_id: string }) => {
       deviceIdRef.current = device_id;
+      // Transferir el playback a este dispositivo virtual para que Spotify sepa dónde reproducir
+      const t = getTokenFromCookie();
+      if (t) transferPlayback(t, device_id);
       setConnected(true);
     });
 
