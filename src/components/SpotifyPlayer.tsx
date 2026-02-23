@@ -85,10 +85,12 @@ export const SpotifyPlayer = () => {
 
     player.addListener("ready", ({ device_id }: { device_id: string }) => {
       deviceIdRef.current = device_id;
-      // Transferir el playback a este dispositivo virtual para que Spotify sepa dónde reproducir
       const t = getTokenFromCookie();
-      if (t) transferPlayback(t, device_id);
-      setConnected(true);
+      if (t) {
+        transferPlayback(t, device_id).then(() => setConnected(true));
+      } else {
+        setConnected(true);
+      }
     });
 
     player.addListener("not_ready", () => setConnected(false));
