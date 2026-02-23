@@ -8,7 +8,6 @@ function getTokenFromCookie(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-// 1. URL corregida para listar dispositivos
 async function waitForDevice(token: string, deviceId: string, retries = 10): Promise<boolean> {
   for (let i = 0; i < retries; i++) {
     const res = await fetch("https://api.spotify.com/v1/me/player/devices", {
@@ -23,7 +22,6 @@ async function waitForDevice(token: string, deviceId: string, retries = 10): Pro
   return false;
 }
 
-// 2. URL corregida para transferencia (usamos play: true como en tu test)
 async function transferPlayback(token: string, deviceId: string) {
   await fetch("https://api.spotify.com/v1/me/player", {
     method: "PUT",
@@ -31,11 +29,10 @@ async function transferPlayback(token: string, deviceId: string) {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ device_ids: [deviceId], play: true }),
+    body: JSON.stringify({ device_ids: [deviceId], play: false }),
   });
 }
 
-// 3. URL corregida con el query parameter device_id y el track ID
 async function playTrack(token: string, deviceId: string, spotifyUri: string) {
   await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
     method: "PUT",
@@ -102,11 +99,6 @@ export const SpotifyPlayer = () => {
       setConnected(true);
     });
 
-    player.addListener("not_ready", () => {
-      deviceIdRef.current = null;
-      setConnected(false);
-    });
-
     player.connect().then((ok: boolean) => {
       if (ok) playerRef.current = player;
     });
@@ -114,13 +106,11 @@ export const SpotifyPlayer = () => {
     return () => player.disconnect();
   }, [sdkReady]);
 
-  useEffect(() => {
-    currentUriRef.current = null;
-  }, [activeSong]);
-
+  // Manejo de reproducción sincronizado con el ID de la canción
   useEffect(() => {
     const handlePlayback = async () => {
-      if (!playerRef.current || !deviceIdRef.current || !activeSong) return;
+      if (!playerRef.current || !deviceIdRef.current || !activeSong?.id) return;
+      
       const token = getTokenFromCookie();
       if (!token) return;
 
@@ -128,10 +118,13 @@ export const SpotifyPlayer = () => {
 
       if (isPlaying) {
         await playerRef.current.activateElement();
+        
+        // Si la canción cambió, mandamos el comando PLAY a la API
         if (currentUriRef.current !== uri) {
           currentUriRef.current = uri;
           await playTrack(token, deviceIdRef.current, uri);
         } else {
+          // Si es la misma canción, solo reanudamos
           await playerRef.current.resume();
         }
       } else {
@@ -140,7 +133,7 @@ export const SpotifyPlayer = () => {
     };
 
     handlePlayback();
-  }, [isPlaying, activeSong]);
+  }, [isPlaying, activeSong?.id]); // El ID es la clave aquí
 
   return null;
 };

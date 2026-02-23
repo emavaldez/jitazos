@@ -16,8 +16,6 @@ interface GameState {
   activeSong: Song | null;
   status: 'idle' | 'loading' | 'playing' | 'won';
   isPlaying: boolean;
-
-  // Acciones
   startGame: () => Promise<void>;
   addPoint: (team: 0 | 1) => void;
   placeSong: (index: number) => boolean;
@@ -56,10 +54,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const response = await fetch('/api/songs');
       const data = await response.json();
       const songsArray: Song[] = Array.isArray(data) ? data : [];
-
       if (songsArray.length < 3) return;
 
-      // Primera carta del tablero (compartida por ambos equipos como base)
       const cartaBase = songsArray[0];
 
       set({
@@ -89,7 +85,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!activeSong) return false;
 
     const currentTimeline = currentTurn === 0 ? [...team1Timeline] : [...team2Timeline];
-
     const leftSong = currentTimeline[index - 1];
     const rightSong = currentTimeline[index];
 
@@ -101,12 +96,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       currentTimeline.splice(index, 0, activeSong);
     }
 
+    // Al colocar la canción, pasamos a la siguiente y pausamos el reproductor
     set({
       [currentTurn === 0 ? "team1Timeline" : "team2Timeline"]: currentTimeline,
       activeSong: playlist[0] || null,
       playlist: playlist.slice(1),
       currentTurn: currentTurn === 0 ? 1 : 0,
-      isPlaying: false,
+      isPlaying: false, // Forzamos pausa para el nuevo turno
     });
 
     return isCorrect;
