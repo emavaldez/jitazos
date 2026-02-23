@@ -1,7 +1,13 @@
 "use client";
 import { useGameStore } from "@/store/useGameStore";
 import { SpotifyPlayer } from "@/components/SpotifyPlayer";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+function getTokenFromCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/spotify_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 export default function Home() {
   const {
@@ -24,13 +30,45 @@ export default function Home() {
   const [artistGuess, setArtistGuess] = useState("");
   const [dragging, setDragging] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [hasToken, setHasToken] = useState(false);
 
   const timelineActiva = currentTurn === 0 ? team1Timeline : team2Timeline;
 
-  // ── Pantalla de Inicio ────────────────────────────────────────────────────
+  useEffect(() => {
+    setHasToken(!!getTokenFromCookie());
+  }, []);
+
+  // ── Pantalla: Login con Spotify ───────────────────────────────────────────
+  if (!hasToken) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-white">
+        <h1 className="text-7xl font-black italic text-green-500 mb-4 tracking-tighter">
+          HITAZOS
+        </h1>
+        <p className="mb-2 text-zinc-400 font-bold uppercase tracking-widest text-sm">
+          484 canciones · 1960–2024
+        </p>
+        <p className="mb-12 text-zinc-600 text-xs text-center max-w-xs">
+          Necesitás Spotify Premium para reproducir las canciones
+        </p>
+        <a
+          href="/api/auth/login"
+          className="flex items-center gap-3 bg-[#1DB954] text-black px-10 py-5 rounded-3xl font-black text-xl hover:scale-105 active:scale-95 transition-all shadow-[0_0_40px_rgba(29,185,84,0.4)]"
+        >
+          <svg viewBox="0 0 24 24" className="w-6 h-6 fill-black">
+            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
+          </svg>
+          Conectar con Spotify
+        </a>
+      </div>
+    );
+  }
+
+  // ── Pantalla: Inicio / Cargando ───────────────────────────────────────────
   if (status === "idle" || status === "loading") {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-white">
+        <SpotifyPlayer />
         <h1 className="text-7xl font-black italic text-green-500 mb-4 tracking-tighter">
           HITAZOS
         </h1>
@@ -126,19 +164,13 @@ export default function Home() {
           onDrop={() => handleDrop(0)}
           onClick={() => confirmarYColocar(0)}
         />
-
         {timelineActiva.map((song, i) => (
           <div key={song.id + i} className="flex items-center gap-2">
-            {/* Carta colocada: solo año visible, hover revela título y artista */}
             <div className="group relative w-24 h-36 bg-zinc-900 border-2 border-green-500 rounded-2xl overflow-hidden cursor-default shadow-xl">
               <div className="absolute top-0 left-0 w-full h-1 bg-green-500" />
-
-              {/* Vista por defecto: solo año centrado */}
               <div className="absolute inset-0 flex items-center justify-center group-hover:opacity-0 transition-opacity duration-200">
                 <p className="text-3xl font-black text-white">{song.year}</p>
               </div>
-
-              {/* Vista hover: año + nombre + artista */}
               <div className="absolute inset-0 p-3 flex flex-col justify-between opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                 <p className="text-xl font-black text-green-400">{song.year}</p>
                 <div className="leading-tight">
@@ -147,7 +179,6 @@ export default function Home() {
                 </div>
               </div>
             </div>
-
             <DropZone
               index={i + 1}
               active={dragOverIndex === i + 1}
@@ -163,24 +194,22 @@ export default function Home() {
       {/* ── Panel Inferior Fijo ── */}
       <div className="fixed bottom-0 left-0 w-full p-4 bg-gradient-to-t from-black via-black/95 to-transparent z-[100]">
         <div className="max-w-md mx-auto space-y-3">
-
           {activeSong && (
             <div className="flex items-center gap-3">
-              {/* Carta misteriosa — arrastrable */}
+              {/* Carta arrastrable */}
               <div
                 draggable
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
                 className="w-24 h-36 bg-zinc-800 border-2 border-zinc-600 rounded-2xl flex flex-col items-center justify-center cursor-grab active:cursor-grabbing shadow-xl shrink-0 select-none hover:border-green-500 transition-colors"
-                title="Arrastrá al lugar en el timeline"
               >
                 <span className="text-3xl mb-1">🎵</span>
                 <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider text-center leading-tight px-2">
-                  Arrastrá o hacé click en el +
+                  Arrastrá o hacé click en +
                 </p>
               </div>
 
-              {/* Inputs de adivinanza */}
+              {/* Inputs */}
               <div className="flex-1 space-y-2">
                 <div className="flex gap-2">
                   <input
@@ -190,12 +219,7 @@ export default function Home() {
                     placeholder="¿Nombre del tema? (+1)"
                     className="flex-1 bg-zinc-900 border border-zinc-700 p-3 rounded-xl outline-none focus:ring-2 ring-green-500 text-xs"
                   />
-                  <button
-                    onClick={handleGuessTrack}
-                    className="bg-zinc-800 px-3 rounded-xl font-black hover:bg-zinc-700 active:scale-90 transition-all text-xs uppercase"
-                  >
-                    OK
-                  </button>
+                  <button onClick={handleGuessTrack} className="bg-zinc-800 px-3 rounded-xl font-black hover:bg-zinc-700 active:scale-90 transition-all text-xs uppercase">OK</button>
                 </div>
                 <div className="flex gap-2">
                   <input
@@ -205,24 +229,16 @@ export default function Home() {
                     placeholder="¿Artista / Banda? (+1)"
                     className="flex-1 bg-zinc-900 border border-zinc-700 p-3 rounded-xl outline-none focus:ring-2 ring-green-500 text-xs"
                   />
-                  <button
-                    onClick={handleGuessArtist}
-                    className="bg-zinc-800 px-3 rounded-xl font-black hover:bg-zinc-700 active:scale-90 transition-all text-xs uppercase"
-                  >
-                    OK
-                  </button>
+                  <button onClick={handleGuessArtist} className="bg-zinc-800 px-3 rounded-xl font-black hover:bg-zinc-700 active:scale-90 transition-all text-xs uppercase">OK</button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Botón reproducir */}
           <button
             onClick={() => togglePlay(!isPlaying)}
             className={`w-full h-14 rounded-2xl font-black text-lg transition-all duration-300 active:scale-95 shadow-xl ${
-              isPlaying
-                ? "bg-green-500 text-black ring-4 ring-green-500/20"
-                : "bg-white text-black"
+              isPlaying ? "bg-green-500 text-black ring-4 ring-green-500/20" : "bg-white text-black"
             }`}
           >
             {isPlaying ? "⏸ PAUSAR HIT" : "▶️ REPRODUCIR HIT"}
@@ -233,7 +249,6 @@ export default function Home() {
   );
 }
 
-// ── DropZone ──────────────────────────────────────────────────────────────────
 interface DropZoneProps {
   index: number;
   active: boolean;

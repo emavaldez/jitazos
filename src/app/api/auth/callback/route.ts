@@ -1,58 +1,56 @@
 // src/app/api/auth/callback/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const code = searchParams.get('code');
+  const code = searchParams.get("code");
+  const error = searchParams.get("error");
 
-  if (!code) {
-    return NextResponse.redirect(new URL('/?error=no_code', request.url));
+  if (error || !code) {
+    return NextResponse.redirect(new URL("/?auth=error", request.url));
   }
 
   const clientId = process.env.SPOTIFY_CLIENT_ID!;
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET!;
-  const redirectUri = process.env.SPOTIFY_REDIRECT_URI || 'http://localhost:3000/api/auth/callback';
+  const redirectUri = process.env.SPOTIFY_REDIRECT_URI!;
 
-  const body = new URLSearchParams({
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: redirectUri,
-  });
-
-  const response = await fetch('https://accounts.spotify.com/api/token', {
-    method: 'POST',
+  // Intercambiar code por access_token
+  const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
     headers: {
-      Authorization: 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64'),
-      'Content-Type': 'application/x-www-form-urlencoded',
+      "Authorization": "Basic " + Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: body.toString(),
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+    }),
   });
 
-  const data = await response.json();
+  const tokenData = await tokenRes.json();
 
-  if (!data.access_token) {
-    return NextResponse.redirect(new URL('/?error=no_token', request.url));
+  if (!tokenData.access_token) {
+    return NextResponse.redirect(new URL("/?auth=error", request.url));
   }
 
-  // Guardamos el token en una cookie HttpOnly
-  const res = NextResponse.redirect(new URL('/', request.url));
-  res.cookies.set('spotify_token', data.access_token, {
+  // Guardar token en cookie (httpOnly para seguridad, pero el SDK lo necesita en cliente)
+  // Usamos una cookie legible por JS para que el cliente pueda accederla
+  const response = NextResponse.redirect(new URL("/?auth=ok", request.url));
+
+  response.cookies.set("spotify_token", tokenData.access_token, {
+    httpOnly: false, // necesario para que el SDK lo lea desde el cliente
+    maxAge: tokenData.expires_in, // ~3600 segundos
+    path: "/",
+    sameSite: "lax",
+  });
+
+  response.cookies.set("spotify_refresh_token", tokenData.refresh_token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 3600, // 1 hora
-    path: '/',
-    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 30, // 30 días
+    path: "/",
+    sameSite: "lax",
   });
-  // También guardamos el refresh_token si viene
-  if (data.refresh_token) {
-    res.cookies.set('spotify_refresh_token', data.refresh_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 60 * 60 * 24 * 30, // 30 días
-      path: '/',
-      sameSite: 'lax',
-    });
-  }
 
-  return res;
+  return response;
 }

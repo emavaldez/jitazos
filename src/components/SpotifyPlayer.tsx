@@ -2,55 +2,125 @@
 import { useGameStore } from "@/store/useGameStore";
 import { useEffect, useRef, useState } from "react";
 
+// Tipos del SDK
+declare global {
+  interface Window {
+    Spotify: {
+      Player: new (options: {
+        name: string;
+        getOAuthToken: (cb: (token: string) => void) => void;
+        volume: number;
+      }) => SpotifySDKPlayer;
+    };
+    onSpotifyWebPlaybackSDKReady: () => void;
+  }
+}
+
+interface SpotifySDKPlayer {
+  connect: () => Promise<boolean>;
+  disconnect: () => void;
+  resume: () => Promise<void>;
+  pause: () => Promise<void>;
+  addListener: (event: string, cb: (data: unknown) => void) => void;
+}
+
+function getTokenFromCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/spotify_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function playTrack(token: string, deviceId: string, spotifyUri: string) {
+  await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ uris: [spotifyUri] }),
+  });
+}
+
 export const SpotifyPlayer = () => {
   const { activeSong, isPlaying } = useGameStore();
-  const [mounted, setMounted] = useState(false);
-  const [playCount, setPlayCount] = useState(0);
-  const prevIsPlaying = useRef(false);
+  const playerRef = useRef<SpotifySDKPlayer | null>(null);
+  const deviceIdRef = useRef<string | null>(null);
+  const [sdkReady, setSdkReady] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const currentUriRef = useRef<string | null>(null);
 
+  // Cargar el SDK una sola vez
   useEffect(() => {
-    setMounted(true);
+    if (document.getElementById("spotify-sdk")) {
+      // Ya cargado, ver si ya disparó el callback
+      if (window.Spotify) setSdkReady(true);
+      return;
+    }
+
+    window.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
+
+    const script = document.createElement("script");
+    script.id = "spotify-sdk";
+    script.src = "https://sdk.scdn.co/spotify-player.js";
+    script.async = true;
+    document.body.appendChild(script);
   }, []);
 
-  // Forzar remount del iframe dentro del contexto del click del usuario
+  // Inicializar el Player cuando el SDK esté listo
   useEffect(() => {
-    if (isPlaying && !prevIsPlaying.current) {
-      setPlayCount((c) => c + 1);
+    if (!sdkReady) return;
+
+    const token = getTokenFromCookie();
+    if (!token) return;
+
+    const player = new window.Spotify.Player({
+      name: "HITAZOS",
+      getOAuthToken: async (cb) => {
+        let t = getTokenFromCookie();
+        if (!t) {
+          await fetch("/api/auth/refresh");
+          t = getTokenFromCookie();
+        }
+        cb(t || "");
+      },
+      volume: 0.8,
+    });
+
+    player.addListener("ready", (data) => {
+      const { device_id } = data as { device_id: string };
+      deviceIdRef.current = device_id;
+      setConnected(true);
+    });
+
+    player.addListener("not_ready", () => setConnected(false));
+
+    player.connect().then((ok) => {
+      if (ok) playerRef.current = player;
+    });
+
+    return () => player.disconnect();
+  }, [sdkReady]);
+
+  // Reaccionar a play/pause y cambio de canción
+  useEffect(() => {
+    if (!playerRef.current || !deviceIdRef.current || !activeSong) return;
+    const token = getTokenFromCookie();
+    if (!token) return;
+
+    const uri = `spotify:track:${activeSong.id}`;
+
+    if (isPlaying) {
+      if (currentUriRef.current !== uri) {
+        currentUriRef.current = uri;
+        playTrack(token, deviceIdRef.current, uri);
+      } else {
+        playerRef.current.resume();
+      }
+    } else {
+      playerRef.current.pause();
     }
-    prevIsPlaying.current = isPlaying;
-  }, [isPlaying]);
+  }, [isPlaying, activeSong]);
 
-  if (!mounted || !activeSong) return null;
-
-  const trackId = activeSong.id;
-
-  return (
-    <>
-      {/* Preload invisible: carga el track antes de que el usuario haga play */}
-      <div className="sr-only" aria-hidden="true">
-        <iframe
-          key={`preload-${trackId}`}
-          src={`https://open.spotify.com/embed/track/${trackId}?utm_source=generator`}
-          width="1"
-          height="1"
-          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-        />
-      </div>
-
-      {/* Reproductor visible solo cuando isPlaying */}
-      {isPlaying && (
-        <div className="fixed bottom-[200px] left-1/2 -translate-x-1/2 z-[9999]">
-          <iframe
-            key={`play-${trackId}-${playCount}`}
-            src={`https://open.spotify.com/embed/track/${trackId}?utm_source=generator&autoplay=1`}
-            width="300"
-            height="80"
-            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-            allowFullScreen
-            className="rounded-xl shadow-2xl"
-          />
-        </div>
-      )}
-    </>
-  );
+  if (!sdkReady || !connected) return null;
+  return null; // No hay UI — el control está en page.tsx
 };

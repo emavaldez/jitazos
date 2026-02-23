@@ -1,17 +1,23 @@
 // src/app/api/auth/login/route.ts
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
 
 export async function GET() {
   const clientId = process.env.SPOTIFY_CLIENT_ID!;
-  const redirectUri = process.env.SPOTIFY_REDIRECT_URI || 'http://localhost:3000/api/auth/callback';
+  const redirectUri = process.env.SPOTIFY_REDIRECT_URI!;
 
-  const scope = 'streaming user-read-email user-read-private user-modify-playback-state';
+  const scopes = [
+    "streaming",
+    "user-read-email",
+    "user-read-private",
+    "user-modify-playback-state",
+    "user-read-playback-state",
+  ].join(" ");
 
   const params = new URLSearchParams({
-    response_type: 'code',
     client_id: clientId,
-    scope,
+    response_type: "code",
     redirect_uri: redirectUri,
+    scope: scopes,
   });
 
   return NextResponse.redirect(
