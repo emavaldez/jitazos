@@ -82,7 +82,10 @@ export const SpotifyPlayer = () => {
       deviceIdRef.current = device_id;
       const t = getTokenFromCookie();
       if (t) {
-        transferPlayback(t, device_id).then(() => setConnected(true));
+        // Esperamos 1s para que el device termine de registrarse en Spotify antes de transferir
+        setTimeout(() => {
+          transferPlayback(t, device_id).then(() => setConnected(true));
+        }, 1000);
       } else {
         setConnected(true);
       }
