@@ -8,37 +8,12 @@ function getTokenFromCookie(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-// Endpoints oficiales de Spotify (Asegúrate de que tu token tenga los scopes necesarios)
-const SPOTIFY_API_BASE = "https://api.spotify.com/v1/me/player";
-
-async function waitForDevice(token: string, deviceId: string, retries = 10): Promise<boolean> {
-  for (let i = 0; i < retries; i++) {
-    const res = await fetch(`${SPOTIFY_API_BASE}/devices`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) continue;
-    const data = await res.json();
-    const devices: { id: string }[] = data.devices || [];
-    if (devices.some((d) => d.id === deviceId)) return true;
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  return false;
-}
-
-async function transferPlayback(token: string, deviceId: string) {
-  await fetch(SPOTIFY_API_BASE, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ device_ids: [deviceId], play: false }),
-  });
-}
+// URLs Oficiales de Spotify
+const BASE_URL = "https://api.spotify.com/v1/me/player";
 
 async function playTrack(token: string, deviceId: string, spotifyUri: string) {
-  // CORRECCIÓN: Usamos la URL correcta con el device_id como parámetro y el template literal corregido
-  await fetch(`${SPOTIFY_API_BASE}/play?device_id=${deviceId}`, {
+  console.log(`[Player] Solicitando canción: ${spotifyUri}`);
+  const res = await fetch(`${BASE_URL}/play?device_id=${deviceId}`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -46,91 +21,83 @@ async function playTrack(token: string, deviceId: string, spotifyUri: string) {
     },
     body: JSON.stringify({ uris: [spotifyUri] }),
   });
+  
+  if (res.ok) {
+    console.log("[Player] Cambio de canción exitoso (204)");
+  } else {
+    const err = await res.json().catch(() => ({}));
+    console.error("[Player] Error al cambiar canción:", err);
+  }
 }
-
-type AnyPlayer = any;
 
 export const SpotifyPlayer = () => {
   const { activeSong, isPlaying } = useGameStore();
-  const playerRef = useRef<AnyPlayer>(null);
+  const playerRef = useRef<any>(null);
   const deviceIdRef = useRef<string | null>(null);
   const [sdkReady, setSdkReady] = useState(false);
   const [connected, setConnected] = useState(false);
   const currentUriRef = useRef<string | null>(null);
 
+  // 1. Cargar SDK
   useEffect(() => {
     const w = window as any;
-    if (document.getElementById("spotify-sdk")) {
-      if (w.Spotify) setSdkReady(true);
-      return;
-    }
+    if (w.Spotify) { setSdkReady(true); return; }
     w.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
     const script = document.createElement("script");
-    script.id = "spotify-sdk";
     script.src = "https://sdk.scdn.co/spotify-player.js";
     script.async = true;
     document.body.appendChild(script);
   }, []);
 
+  // 2. Inicializar Player
   useEffect(() => {
     if (!sdkReady) return;
     const token = getTokenFromCookie();
     if (!token) return;
 
     const w = window as any;
-    const player: AnyPlayer = new w.Spotify.Player({
+    const player = new w.Spotify.Player({
       name: "HITAZOS",
-      getOAuthToken: async (cb: (t: string) => void) => {
-        let t = getTokenFromCookie();
-        if (!t) {
-          await fetch("/api/auth/refresh");
-          t = getTokenFromCookie();
-        }
-        cb(t || "");
-      },
+      getOAuthToken: (cb: any) => cb(getTokenFromCookie() || ""),
       volume: 0.8,
     });
 
-    player.addListener("ready", async ({ device_id }: { device_id: string }) => {
+    player.addListener("ready", ({ device_id }: { device_id: string }) => {
+      console.log("[Player] Dispositivo HITAZOS listo:", device_id);
       deviceIdRef.current = device_id;
-      const t = getTokenFromCookie();
-      if (!t) { setConnected(true); return; }
-
-      const appeared = await waitForDevice(t, device_id);
-      if (appeared) {
-        await transferPlayback(t, device_id);
-      }
       setConnected(true);
+
+      // Transferimos pero SIN play automático para no pisar la lógica del juego
+      fetch(BASE_URL, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ device_ids: [device_id], play: false }),
+      });
     });
 
-    player.connect().then((ok: boolean) => {
-      if (ok) playerRef.current = player;
-    });
-
+    player.connect();
+    playerRef.current = player;
     return () => player.disconnect();
   }, [sdkReady]);
 
-  // Sincronización agresiva: si cambia el activeSong, forzamos que el Player "olvide" la canción vieja
+  // 3. Resetear el control de URI cuando cambia la canción en el Store
   useEffect(() => {
-    currentUriRef.current = null;
+    console.log("[Player] La carta cambió a:", activeSong?.name, "ID:", activeSong?.id);
+    currentUriRef.current = null; 
   }, [activeSong?.id]);
 
+  // 4. Control de reproducción
   useEffect(() => {
     const handlePlayback = async () => {
       if (!playerRef.current || !deviceIdRef.current || !activeSong?.id) return;
-      
       const token = getTokenFromCookie();
-      if (!token) return;
-
       const uri = `spotify:track:${activeSong.id}`;
 
       if (isPlaying) {
         await playerRef.current.activateElement();
-        
-        // Si el URI es diferente al que tenemos guardado, mandamos a reproducir el nuevo track
         if (currentUriRef.current !== uri) {
           currentUriRef.current = uri;
-          await playTrack(token, deviceIdRef.current, uri);
+          await playTrack(token!, deviceIdRef.current, uri);
         } else {
           await playerRef.current.resume();
         }
@@ -138,7 +105,6 @@ export const SpotifyPlayer = () => {
         await playerRef.current.pause();
       }
     };
-
     handlePlayback();
   }, [isPlaying, activeSong?.id]);
 
