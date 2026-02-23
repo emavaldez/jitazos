@@ -1,143 +1,122 @@
 "use client";
+
 import { useGameStore } from "@/store/useGameStore";
 import { useEffect, useRef, useState } from "react";
 
-function getTokenFromCookie(): string | null {
+function getToken(): string | null {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(/spotify_token=([^;]+)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-async function transferPlayback(token: string, deviceId: string) {
-  await fetch("https://api.spotify.com/v1/me/player", {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ device_ids: [deviceId] }),
-  });
-  console.log("TRANSFER STATUS:", res.status);
-}
-
-async function playTrack(token: string, deviceId: string, spotifyUri: string) {
-  const res = await fetch(
-    `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`,
-    {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ uris: [spotifyUri] }),
-    }
-  );
-
-  console.log("PLAY STATUS:", res.status);
-  const text = await res.text();
-  console.log("PLAY RESPONSE:", text);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyPlayer = any;
+type SpotifyPlayerType = Spotify.Player;
 
 export const SpotifyPlayer = () => {
   const { activeSong, isPlaying } = useGameStore();
-  const playerRef = useRef<AnyPlayer>(null);
-  const deviceIdRef = useRef<string | null>(null);
-  const [sdkReady, setSdkReady] = useState(false);
-  const [connected, setConnected] = useState(false);
-  const currentUriRef = useRef<string | null>(null);
 
-  // Cargar el SDK una sola vez
+  const playerRef = useRef<SpotifyPlayerType | null>(null);
+  const [sdkReady, setSdkReady] = useState(false);
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
+
+  // 1️⃣ Cargar SDK
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = window as any;
-    if (document.getElementById("spotify-sdk")) {
-      if (w.Spotify) setSdkReady(true);
+    if (typeof window === "undefined") return;
+
+    if ((window as any).Spotify) {
+      setSdkReady(true);
       return;
     }
-    w.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
+
+    (window as any).onSpotifyWebPlaybackSDKReady = () => {
+      setSdkReady(true);
+    };
+
     const script = document.createElement("script");
-    script.id = "spotify-sdk";
     script.src = "https://sdk.scdn.co/spotify-player.js";
     script.async = true;
     document.body.appendChild(script);
   }, []);
 
-  // Inicializar el Player cuando el SDK esté listo
+  // 2️⃣ Inicializar Player
   useEffect(() => {
     if (!sdkReady) return;
-    const token = getTokenFromCookie();
+
+    const token = getToken();
     if (!token) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = window as any;
-    const player: AnyPlayer = new w.Spotify.Player({
+    const player = new (window as any).Spotify.Player({
       name: "HITAZOS",
-      getOAuthToken: async (cb: (t: string) => void) => {
-        let t = getTokenFromCookie();
+      getOAuthToken: async (cb: (token: string) => void) => {
+        let t = getToken();
         if (!t) {
           await fetch("/api/auth/refresh");
-          t = getTokenFromCookie();
+          t = getToken();
         }
         cb(t || "");
       },
       volume: 0.8,
     });
 
-    player.addListener("ready", ({ device_id }: { device_id: string }) => {
-      deviceIdRef.current = device_id;
-      const t = getTokenFromCookie();
-      if (t) {
-        // Esperamos 1s para que el device termine de registrarse en Spotify antes de transferir
-        setTimeout(() => {
-          transferPlayback(t, device_id).then(() => setConnected(true));
-        }, 1000);
-      } else {
-        setConnected(true);
+    player.addListener("ready", () => {
+      console.log("✅ Spotify Player Ready");
+      setIsPlayerReady(true);
+    });
+
+    player.addListener("initialization_error", ({ message }) =>
+      console.error("init error:", message)
+    );
+    player.addListener("authentication_error", ({ message }) =>
+      console.error("auth error:", message)
+    );
+    player.addListener("account_error", ({ message }) =>
+      console.error("account error:", message)
+    );
+    player.addListener("playback_error", ({ message }) =>
+      console.error("playback error:", message)
+    );
+
+    player.connect().then((success: boolean) => {
+      if (success) {
+        playerRef.current = player;
       }
     });
 
-    player.addListener("not_ready", () => setConnected(false));
-
-    player.connect().then((ok: boolean) => {
-      if (ok) playerRef.current = player;
-    });
-
-    return () => player.disconnect();
+    return () => {
+      player.disconnect();
+    };
   }, [sdkReady]);
 
-  // Resetear URI cacheado cuando cambia la canción activa (nuevo turno)
+  // 3️⃣ Reproducir cuando cambia canción o estado
   useEffect(() => {
-    currentUriRef.current = null;
-  }, [activeSong]);
+    const play = async () => {
+      if (!playerRef.current || !isPlayerReady || !activeSong) return;
 
-  // Reaccionar a play/pause
-  useEffect(() => {
-    const handlePlayback = async () => {
-      if (!playerRef.current || !deviceIdRef.current || !activeSong) return;
-      const token = getTokenFromCookie();
+      const token = getToken();
       if (!token) return;
 
       const uri = `spotify:track:${activeSong.id}`;
 
       if (isPlaying) {
+        // Necesario para autoplay policies del browser
         await playerRef.current.activateElement();
-        if (currentUriRef.current !== uri) {
-          currentUriRef.current = uri;
-          await playTrack(token, deviceIdRef.current, uri);
-        } else {
-          await playerRef.current.resume();
-        }
+
+        await fetch("https://api.spotify.com/v1/me/player/play", {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            uris: [uri],
+          }),
+        });
       } else {
         await playerRef.current.pause();
       }
     };
 
-    handlePlayback();
-  }, [isPlaying, activeSong]);
+    play();
+  }, [activeSong, isPlaying, isPlayerReady]);
 
-  if (!sdkReady || !connected) return null;
   return null;
 };
