@@ -1,6 +1,6 @@
 "use client";
 import { useGameStore } from "@/store/useGameStore";
-import { SpotifyPlayerButton } from "@/components/SpotifyPlayer";
+import { SpotifyPlayer } from "@/components/SpotifyPlayer";
 import { useState } from "react";
 
 export default function Home() {
@@ -44,7 +44,7 @@ export default function Home() {
   // Pantalla de Juego
   return (
     <main className="min-h-screen bg-black text-white p-4 font-sans pb-40">
-      <SpotifyPlayerButton />
+      <SpotifyPlayer />
 
       {/* Marcador Superior */}
       <div className="flex justify-around items-center mb-10 bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800 backdrop-blur-md sticky top-4 z-50">
