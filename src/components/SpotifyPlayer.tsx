@@ -64,7 +64,7 @@ export const SpotifyPlayer = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const player = new (window as any).Spotify.Player({
       name: "HITAZOS",
-      getOAuthToken: async (cb) => {
+      getOAuthToken: async (cb: (token: string) => void) => {
         let t = getTokenFromCookie();
         if (!t) {
           await fetch("/api/auth/refresh");
