@@ -2,20 +2,6 @@
 import { useGameStore } from "@/store/useGameStore";
 import { useEffect, useRef, useState } from "react";
 
-// Tipos del SDK
-declare global {
-  interface Window {
-    Spotify: {
-      Player: new (options: {
-        name: string;
-        getOAuthToken: (cb: (token: string) => void) => void;
-        volume: number;
-      }) => SpotifySDKPlayer;
-    };
-    onSpotifyWebPlaybackSDKReady: () => void;
-  }
-}
-
 interface SpotifySDKPlayer {
   connect: () => Promise<boolean>;
   disconnect: () => void;
@@ -53,11 +39,13 @@ export const SpotifyPlayer = () => {
   useEffect(() => {
     if (document.getElementById("spotify-sdk")) {
       // Ya cargado, ver si ya disparó el callback
-      if (window.Spotify) setSdkReady(true);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((window as any).Spotify) setSdkReady(true);
       return;
     }
 
-    window.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
 
     const script = document.createElement("script");
     script.id = "spotify-sdk";
@@ -73,7 +61,8 @@ export const SpotifyPlayer = () => {
     const token = getTokenFromCookie();
     if (!token) return;
 
-    const player = new window.Spotify.Player({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const player = new (window as any).Spotify.Player({
       name: "HITAZOS",
       getOAuthToken: async (cb) => {
         let t = getTokenFromCookie();
