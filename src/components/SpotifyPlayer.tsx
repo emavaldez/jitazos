@@ -10,6 +10,22 @@ function getTokenFromCookie(): string | null {
 
 const SPOTIFY_API_BASE = "https://api.spotify.com/v1/me/player";
 
+// Busca el device llamado "HITAZOS" en la lista de devices de Spotify
+async function findHitazosDevice(token: string): Promise<string | null> {
+  for (let i = 0; i < 10; i++) {
+    const res = await fetch("https://api.spotify.com/v1/me/player/devices", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    const devices: { id: string; name: string }[] = data.devices || [];
+    console.log(`devices poll ${i}:`, devices.map((d) => `${d.name}:${d.id}`));
+    const hitazos = devices.find((d) => d.name === "HITAZOS");
+    if (hitazos) return hitazos.id;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return null;
+}
+
 export const SpotifyPlayer = () => {
   const { activeSong, isPlaying } = useGameStore();
   const playerRef = useRef<any>(null);
@@ -40,22 +56,23 @@ export const SpotifyPlayer = () => {
       volume: 0.8,
     });
 
-    player.addListener("ready", async ({ device_id }: { device_id: string }) => {
-      deviceIdRef.current = device_id;
+    player.addListener("ready", async () => {
       const t = getTokenFromCookie();
-      if (!t) { setConnected(true); return; }
+      if (!t) return;
 
-      // Reintentar el transfer hasta que Spotify registre el device (puede tardar unos segundos)
-      for (let i = 0; i < 10; i++) {
-        const res = await fetch(SPOTIFY_API_BASE, {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ device_ids: [device_id], play: false }),
-        });
-        console.log(`transfer attempt ${i}: status ${res.status}`);
-        if (res.status === 204 || res.status === 200) break;
-        await new Promise((r) => setTimeout(r, 500));
-      }
+      // Buscar el device "HITAZOS" en la lista real de Spotify
+      const id = await findHitazosDevice(t);
+      if (!id) { console.warn("No se encontró el device HITAZOS"); return; }
+
+      console.log("Device HITAZOS encontrado:", id);
+      deviceIdRef.current = id;
+
+      // Transferir playback a ese device
+      await fetch(SPOTIFY_API_BASE, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ device_ids: [id], play: false }),
+      });
 
       setConnected(true);
     });
@@ -70,13 +87,13 @@ export const SpotifyPlayer = () => {
     return () => player.disconnect();
   }, [sdkReady]);
 
-  // Resetear URI cacheado cuando cambia la canción activa (nuevo turno)
+  // Resetear URI cuando cambia la canción (nuevo turno)
   useEffect(() => {
     currentUriRef.current = null;
   }, [activeSong?.id]);
 
   useEffect(() => {
-    if (!connected) return; // no hacer nada hasta que el device esté registrado
+    if (!connected) return;
     const updateAudio = async () => {
       if (!deviceIdRef.current || !activeSong?.id) return;
       const token = getTokenFromCookie();
