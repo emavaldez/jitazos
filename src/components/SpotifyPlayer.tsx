@@ -40,15 +40,35 @@ export const SpotifyPlayer = () => {
       volume: 0.8,
     });
 
-    player.addListener("ready", ({ device_id }: { device_id: string }) => {
+    player.addListener("ready", async ({ device_id }: { device_id: string }) => {
       deviceIdRef.current = device_id;
-      // Registrar device silenciosamente, sin arrancar reproducción
-      fetch(SPOTIFY_API_BASE, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${getTokenFromCookie()}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ device_ids: [device_id], play: false }),
-      }).then(() => setConnected(true))
-        .catch(() => setConnected(true)); // conectado igual, el play lo manejamos aparte
+      const t = getTokenFromCookie();
+      if (!t) { setConnected(true); return; }
+
+      // Esperar a que el device aparezca en la cuenta antes de transferir
+      let found = false;
+      for (let i = 0; i < 10; i++) {
+        const res = await fetch("https://api.spotify.com/v1/me/player/devices", {
+          headers: { Authorization: `Bearer ${t}` },
+        });
+        const data = await res.json();
+        const devices: { id: string }[] = data.devices || [];
+        console.log("devices poll", i, devices.map((d) => d.id));
+        if (devices.some((d) => d.id === device_id)) { found = true; break; }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+
+      if (found) {
+        await fetch(SPOTIFY_API_BASE, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ device_ids: [device_id], play: false }),
+        });
+      } else {
+        console.warn("Device no apareció en los 5s de polling");
+      }
+
+      setConnected(true);
     });
 
     player.addListener("not_ready", () => {
