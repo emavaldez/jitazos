@@ -67,7 +67,10 @@ export default function Home() {
   const [hasToken, setHasToken]           = useState(false);
   const [powerMsg, setPowerMsg]           = useState<string | null>(null);
 
-  const touchDragging = useRef(false);
+  // Touch drag state
+  const isTouchDragging = useRef(false);
+  const touchStartX     = useRef(0);
+  const touchStartY     = useRef(0);
 
   const timelineActiva = currentTurn === 0 ? team1Timeline : team2Timeline;
   const tc             = TEAM[currentTurn as 0 | 1];
@@ -77,7 +80,7 @@ export default function Home() {
     setHasToken(!!getTokenFromCookie());
   }, []);
 
-  // ── Drag & drop (mouse) ───────────────────────────────────────────────────
+  // ── Drag & drop (mouse / desktop) ────────────────────────────────────────
   const handleDragStart = () => setDragging(true);
   const handleDragEnd   = () => { setDragging(false); setDragOverIndex(null); };
   const handleDrop      = (index: number) => {
@@ -88,8 +91,41 @@ export default function Home() {
   };
 
   // ── Touch drag (iPhone Safari) ────────────────────────────────────────────
-  const handleTouchStart = () => { touchDragging.current = true; };
-  const handleTouchEnd   = () => { touchDragging.current = false; };
+  // La carta de abajo se arrastra con el dedo; al soltar, detectamos qué
+  // DropZone está debajo usando elementFromPoint y disparamos la colocación.
+  const handleCardTouchStart = (e: React.TouchEvent) => {
+    isTouchDragging.current = true;
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleCardTouchMove = (e: React.TouchEvent) => {
+    if (!isTouchDragging.current) return;
+    const touch = e.touches[0];
+    // Resaltar la dropzone que está bajo el dedo
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const dropzone = el?.closest("[data-dropindex]");
+    if (dropzone) {
+      const idx = parseInt(dropzone.getAttribute("data-dropindex") || "-1");
+      setDragOverIndex(idx >= 0 ? idx : null);
+    } else {
+      setDragOverIndex(null);
+    }
+  };
+
+  const handleCardTouchEnd = (e: React.TouchEvent) => {
+    if (!isTouchDragging.current) return;
+    isTouchDragging.current = false;
+    setDragOverIndex(null);
+
+    const touch = e.changedTouches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const dropzone = el?.closest("[data-dropindex]");
+    if (dropzone) {
+      const idx = parseInt(dropzone.getAttribute("data-dropindex") || "-1");
+      if (idx >= 0) confirmarYColocar(idx);
+    }
+  };
 
   // ── Confirmar colocación ─────────────────────────────────────────────────
   const confirmarYColocar = (index: number) => {
@@ -261,7 +297,8 @@ export default function Home() {
           className="w-full overflow-x-auto pb-3 mb-4"
           style={{ WebkitOverflowScrolling: "touch" } as React.CSSProperties}
         >
-          <div className="flex flex-nowrap items-center gap-2 px-4 min-w-max">
+          {/* min-w-max para scroll en mobile; mx-auto + flex justify-center centran en desktop */}
+          <div className="flex flex-nowrap items-center justify-center gap-2 px-4 min-w-max mx-auto">
             <DropZone
               index={0}
               active={dragOverIndex === 0}
@@ -312,8 +349,9 @@ export default function Home() {
                   draggable
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
-                  onTouchStart={handleTouchStart}
-                  onTouchEnd={handleTouchEnd}
+                  onTouchStart={handleCardTouchStart}
+                  onTouchMove={handleCardTouchMove}
+                  onTouchEnd={handleCardTouchEnd}
                   style={{ touchAction: "none", WebkitUserSelect: "none" } as React.CSSProperties}
                   className="card-pulse w-24 h-36 border-2 rounded-2xl flex flex-col items-center justify-center cursor-grab active:cursor-grabbing shadow-xl shrink-0 select-none"
                 >
@@ -369,15 +407,26 @@ interface DropZoneProps {
   onClick: () => void;
 }
 
-function DropZone({ active, tc, onDragOver, onDragLeave, onDrop, onClick }: DropZoneProps) {
+function DropZone({ index, active, tc, onDragOver, onDragLeave, onDrop, onClick }: DropZoneProps) {
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+
   return (
     <button
+      data-dropindex={index}
       onDragOver={(e) => { e.preventDefault(); onDragOver(); }}
       onDragLeave={onDragLeave}
       onDrop={(e) => { e.preventDefault(); onDrop(); }}
       onClick={onClick}
+      onTouchStart={(e) => {
+        touchStartX.current = e.touches[0].clientX;
+        touchStartY.current = e.touches[0].clientY;
+      }}
       onTouchEnd={(e) => {
-        // Safari iOS: evita delay de 300ms y ghost clicks
+        const dx = Math.abs(e.changedTouches[0].clientX - touchStartX.current);
+        const dy = Math.abs(e.changedTouches[0].clientY - touchStartY.current);
+        // Si el dedo se movió más de 10px, era scroll — ignorar
+        if (dx > 10 || dy > 10) return;
         e.preventDefault();
         onClick();
       }}
